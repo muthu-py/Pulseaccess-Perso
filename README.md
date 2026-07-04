@@ -79,3 +79,4 @@ uvicorn app.main:app --reload
 ```
 Interactive API documentation (Swagger UI) is automatically generated and available at:
 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
