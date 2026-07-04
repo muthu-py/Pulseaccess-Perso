@@ -167,9 +167,9 @@ class AuthService:
         if active_otp.attempts >= self._settings.OTP_MAX_ATTEMPTS:
             raise OTPAttemptLimitExceededError()
 
-        # Verify hash
         if not self._security.verify_hash(request.otp_code, active_otp.otp_hash):
             await self._otp_repo.increment_attempts(active_otp.id)
+            await self._otp_repo._session.commit()
             raise InvalidOTPError()
 
         # Mark OTP as used
