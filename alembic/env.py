@@ -16,6 +16,7 @@ import app.modules.member.models
 import app.modules.subscription.models
 import app.modules.payment.models
 import app.modules.notification.models
+import app.modules.telegram.models
 
 config = context.config
 

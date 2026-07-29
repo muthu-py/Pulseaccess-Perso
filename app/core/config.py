@@ -68,6 +68,29 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
 
     # ------------------------------------------------------------------
+    # Telegram Integration
+    # ------------------------------------------------------------------
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_API_BASE_URL: str = "https://api.telegram.org"
+
+    # Retry configuration
+    TELEGRAM_MAX_RETRIES: int = 5
+    TELEGRAM_RETRY_BACKOFF: str = "1m,5m,15m,30m,60m"
+    TELEGRAM_PROCESSING_TIMEOUT: int = 300  # seconds
+
+    # HTTP timeouts (seconds)
+    TELEGRAM_HTTP_TIMEOUT: int = 30
+    TELEGRAM_CONNECT_TIMEOUT: int = 10
+    TELEGRAM_READ_TIMEOUT: int = 30
+
+    # Worker toggles
+    TELEGRAM_RETRY_ENABLED: bool = True
+    TELEGRAM_SYNC_ENABLED: bool = True
+    TELEGRAM_HEALTH_ENABLED: bool = True
+
+    # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
     LOG_LEVEL: str = "INFO"

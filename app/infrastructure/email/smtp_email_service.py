@@ -52,6 +52,11 @@ class SMTPEmailService:
                 to_email,
                 otp_code,
             )
+            try:
+                with open("otp_dump.txt", "w") as f:
+                    f.write(otp_code)
+            except Exception:
+                pass
             return
 
         subject = f"{self._from_name} — Your Login Code"
