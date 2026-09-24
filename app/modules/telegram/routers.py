@@ -183,6 +183,13 @@ async def telegram_webhook(
 
     # ── Verify webhook secret FIRST (Doc 10 §8) ─────────────────────
     webhook_secret = settings.TELEGRAM_WEBHOOK_SECRET
+
+    logger.info(
+        "Received webhook secret: %r, Expected: %r",
+        x_telegram_bot_api_secret_token,
+        webhook_secret,
+    )
+
     if webhook_secret and webhook_secret != x_telegram_bot_api_secret_token:
         logger.warning("Webhook secret mismatch — rejecting request")
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -190,6 +197,7 @@ async def telegram_webhook(
     # ── Parse payload ────────────────────────────────────────────────
     try:
         body = await request.json()
+        logger.info("Webhook body: %s", body)
     except Exception:
         raise HTTPException(status_code=400, detail="Malformed JSON payload")
 
@@ -198,6 +206,7 @@ async def telegram_webhook(
     # ── Dispatch to appropriate handler (Doc 07 §8-11) ───────────────
     try:
         if "message" in body:
+            logger.info("Calling process_webhook_message()")
             logger.debug("Webhook update %s: message", update_id)
             await service.process_webhook_message(body)
         elif "my_chat_member" in body:
