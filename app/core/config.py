@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     TELEGRAM_HEALTH_ENABLED: bool = True
 
     # ------------------------------------------------------------------
+    # Razorpay Integration
+    # ------------------------------------------------------------------
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_API_BASE_URL: str = "https://api.razorpay.com/v1"
+
+    # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
     LOG_LEVEL: str = "INFO"
