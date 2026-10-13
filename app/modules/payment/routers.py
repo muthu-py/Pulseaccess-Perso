@@ -1,7 +1,9 @@
-"""Payment router exposing order creation and checkout endpoints."""
+"""Payment router exposing order creation and webhook processing endpoints."""
 
 import uuid
-from fastapi import APIRouter, Depends, status
+from typing import Any
+
+from fastapi import APIRouter, Depends, Header, Request, status
 
 from app.core.config import Settings, get_settings
 from app.modules.auth.schemas import BaseSuccessResponse
@@ -53,7 +55,21 @@ async def get_payment_order(
     return BaseSuccessResponse(data=response_data)
 
 
-# Webhook endpoint stub (to be completed in Step 5)
-@router.post("/api/v1/webhooks/razorpay", tags=["webhooks"])
-async def razorpay_webhook():
-    return {"status": "received"}
+@router.post(
+    "/api/v1/webhooks/razorpay",
+    response_model=BaseSuccessResponse[dict[str, Any]],
+    summary="Process Razorpay webhook event",
+    tags=["webhooks"],
+)
+async def razorpay_webhook(
+    request: Request,
+    x_razorpay_signature: str | None = Header(None, alias="X-Razorpay-Signature"),
+    service: PaymentService = Depends(get_payment_service),
+) -> BaseSuccessResponse[dict[str, Any]]:
+    """Verify cryptographic signature and process incoming Razorpay webhook event."""
+    raw_body = await request.body()
+    result = await service.process_webhook(
+        raw_payload_bytes=raw_body,
+        signature=x_razorpay_signature,
+    )
+    return BaseSuccessResponse(data=result)

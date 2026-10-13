@@ -9,6 +9,8 @@ from app.infrastructure.razorpay.razorpay_driver import RazorpayDriver
 from app.infrastructure.razorpay.razorpay_interface import RazorpayClient
 from app.modules.payment.repositories import PaymentRepository
 from app.modules.payment.services import PaymentService
+from app.modules.subscription.dependencies import get_subscription_service
+from app.modules.subscription.services import SubscriptionService
 
 
 def get_payment_repository(
@@ -29,10 +31,12 @@ def get_payment_service(
     repository: PaymentRepository = Depends(get_payment_repository),
     razorpay_client: RazorpayClient = Depends(get_razorpay_client),
     settings: Settings = Depends(get_settings),
+    subscription_service: SubscriptionService = Depends(get_subscription_service),
 ) -> PaymentService:
     """Dependency providing PaymentService."""
     return PaymentService(
         repository=repository,
         razorpay_client=razorpay_client,
         settings=settings,
+        subscription_service=subscription_service,
     )

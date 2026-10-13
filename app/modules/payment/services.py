@@ -1,5 +1,6 @@
 """Payment service orchestrating order creation and payment workflows."""
 
+import json
 import uuid
 from typing import Any
 
@@ -7,29 +8,34 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.infrastructure.razorpay.razorpay_exceptions import RazorpayAPIError
 from app.infrastructure.razorpay.razorpay_interface import RazorpayClient
+from app.modules.payment.enums import PaymentEventStatus, PaymentOrderStatus
 from app.modules.payment.exceptions import (
+    InvalidWebhookSignatureError,
     PaymentOrderCreationError,
     PaymentOrderNotFoundError,
     PlanNotFoundError,
 )
 from app.modules.payment.models import PaymentOrder
 from app.modules.payment.repositories import PaymentRepository
+from app.modules.subscription.services import SubscriptionService
 
 logger = get_logger(__name__)
 
 
 class PaymentService:
-    """Business logic for checkout order generation and payment processing."""
+    """Business logic for checkout order generation and webhook event processing."""
 
     def __init__(
         self,
         repository: PaymentRepository,
         razorpay_client: RazorpayClient,
         settings: Settings,
+        subscription_service: SubscriptionService | None = None,
     ) -> None:
         self._repo = repository
         self._razorpay = razorpay_client
         self._settings = settings
+        self._subscription_service = subscription_service
 
     async def create_order(
         self,
@@ -87,3 +93,68 @@ class PaymentService:
         if order is None:
             raise PaymentOrderNotFoundError()
         return order
+
+    async def process_webhook(
+        self,
+        raw_payload_bytes: bytes,
+        signature: str | None,
+    ) -> dict[str, Any]:
+        """Process an incoming Razorpay webhook event with signature check and idempotency."""
+        if not signature:
+            logger.warning("Missing X-Razorpay-Signature in webhook request")
+            raise InvalidWebhookSignatureError("Missing webhook signature")
+
+        if not self._razorpay.verify_webhook_signature(raw_payload_bytes, signature):
+            logger.warning("Invalid X-Razorpay-Signature in webhook request")
+            raise InvalidWebhookSignatureError("Invalid webhook signature")
+
+        try:
+            payload = json.loads(raw_payload_bytes.decode("utf-8"))
+        except Exception as exc:
+            logger.error("Failed to parse webhook JSON payload: %s", exc)
+            return {"status": "error", "message": "Invalid JSON payload"}
+
+        event_name = payload.get("event", "unknown")
+        event_payload = payload.get("payload", {})
+
+        payment_entity = event_payload.get("payment", {}).get("entity", {})
+        order_entity = event_payload.get("order", {}).get("entity", {})
+
+        # Determine unique event identifier (payment id or razorpay event id)
+        event_id = payment_entity.get("id") or payload.get("event_id") or order_entity.get("id")
+
+        # Idempotency check: have we already processed this event?
+        if event_id:
+            existing_event = await self._repo.get_event_by_id(event_id)
+            if existing_event is not None:
+                logger.info("Webhook event %s already processed. Skipping.", event_id)
+                return {"status": "already_processed", "event_id": event_id}
+
+        # Process capture / payment success
+        if event_name in ("payment.captured", "order.paid"):
+            razorpay_order_id = payment_entity.get("order_id") or order_entity.get("id")
+            if razorpay_order_id:
+                order = await self._repo.get_order_by_razorpay_id(razorpay_order_id)
+                if order:
+                    await self._repo.update_order_status(order, PaymentOrderStatus.PAID)
+                    if self._subscription_service:
+                        await self._subscription_service.activate_or_renew(
+                            member_id=order.member_id,
+                            plan_id=order.plan_id,
+                            duration_days=30,
+                        )
+                        logger.info(
+                            "Activated subscription for member %s, plan %s",
+                            order.member_id,
+                            order.plan_id,
+                        )
+
+        # Record event in audit log
+        await self._repo.record_event(
+            event_id=event_id,
+            event_type=event_name,
+            payload=raw_payload_bytes.decode("utf-8"),
+            status=PaymentEventStatus.PROCESSED,
+        )
+
+        return {"status": "success", "event": event_name}
