@@ -8,3 +8,4 @@ class Plan(Base):
     community_id: Mapped[uuid.UUID]
     name: Mapped[str]
     price: Mapped[float]
+    duration_days: Mapped[int] = mapped_column(default=30)

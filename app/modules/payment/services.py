@@ -138,10 +138,12 @@ class PaymentService:
                 if order:
                     await self._repo.update_order_status(order, PaymentOrderStatus.PAID)
                     if self._subscription_service:
+                        plan = await self._repo.get_plan_by_id(order.plan_id)
+                        duration_days = plan.duration_days if plan else 30
                         await self._subscription_service.activate_or_renew(
                             member_id=order.member_id,
                             plan_id=order.plan_id,
-                            duration_days=30,
+                            duration_days=duration_days,
                         )
                         logger.info(
                             "Activated subscription for member %s, plan %s",
