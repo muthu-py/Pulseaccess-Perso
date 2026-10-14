@@ -191,7 +191,7 @@ describe("CommunitiesHome", () => {
       "GET /communities/inactive": () => list(1),
     });
     renderWithClient(<CommunitiesHome />);
-    expect(await screen.findByText(/you have 3 communities/i)).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /new community/i })).toBeInTheDocument();
     expect(router.replace).not.toHaveBeenCalled();
   });
 });

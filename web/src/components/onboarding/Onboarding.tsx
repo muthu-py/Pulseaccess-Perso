@@ -10,17 +10,11 @@ import { Icon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
 import { ApiError, apiRequest } from "@/lib/api/client";
+import { errorText } from "@/lib/errors";
 import type { Community, TelegramLink } from "@/lib/api/types";
 import { creatorKeys, useCommunityCount, useCreatorTelegram } from "@/lib/creator";
 
 const PHONE_PATTERN = /^\+\d{8,15}$/;
-
-function errorText(err: unknown, overrides: Record<string, string> = {}): string {
-  if (err instanceof ApiError) {
-    return overrides[err.code] ?? (err.status >= 500 ? "Something went wrong on our side. Try again." : err.message);
-  }
-  return "Something went wrong. Try again.";
-}
 
 function Step({
   number,
@@ -198,6 +192,7 @@ function CommunityStep() {
         setFormError(
           errorText(err, {
             TELEGRAM_NOT_CONNECTED: "Connect your Telegram account first.",
+            DUPLICATE_COMMUNITY_NAME: "You already have a community with this name.",
             PENDING_TELEGRAM_CONNECTION:
               "You already have a community waiting to be connected to a Telegram group. Finish that one first.",
           }),

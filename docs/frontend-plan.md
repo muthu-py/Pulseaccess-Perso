@@ -107,7 +107,7 @@ _Last updated: 2026-10-14 · branch `communities`_
   Verified the proxy against the running backend.
 - **Not committed yet.**
 
-### ✅ Step 2: Creator sign-in and app shell (done, not committed)
+### ✅ Step 2: Creator sign-in and app shell (done, committed)
 
 Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now un-ignores `web/src/lib/`.
 
@@ -125,7 +125,7 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
 - Wire React Query provider.
 - Tests: form validation and error mapping, OTP step, redirect when logged out.
 
-### Step 3: Creator onboarding
+### ✅ Step 3: Creator onboarding (done, committed)
 
 - `/app/onboarding`: (1) add phone (`PUT /auth/phone`), (2) connect Telegram
   account (`POST /telegram/connect/creator`, open link, poll `GET` until
@@ -133,7 +133,7 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
 - Redirect new creators here until Telegram is connected (community creation
   requires it).
 
-### Step 4: Communities
+### ✅ Step 4: Communities (done, not committed)
 
 - `/app/communities`: Active / Inactive tabs (paginated), each row with name,
   description and connection `StatusBadge`; "New community" form
