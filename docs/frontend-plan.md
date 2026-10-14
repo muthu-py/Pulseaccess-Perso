@@ -107,7 +107,9 @@ _Last updated: 2026-10-14 · branch `communities`_
   Verified the proxy against the running backend.
 - **Not committed yet.**
 
-### ⏭ Step 2: Creator sign-in and app shell (next)
+### ✅ Step 2: Creator sign-in and app shell (done, not committed)
+
+Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now un-ignores `web/src/lib/`.
 
 - `/signup`: name, username (letters/digits/underscore, ≥3), email, phone
   (optional, with country code) → `POST /auth/register`, then go to login.
