@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             Log out
           </Button>
         </header>
-        <main className="flex-1 p-6">{children}</main>
+        <main id="main" className="flex-1 p-6">{children}</main>
       </div>
     </div>
   );
