@@ -88,6 +88,13 @@ class AuthService:
             creator=CreatorResponse.model_validate(creator),
         )
 
+    async def get_me(self, creator_id: uuid.UUID) -> CreatorResponse:
+        """Return the creator's own profile."""
+        creator = await self._creator_repo.get_by_id(creator_id)
+        if creator is None:
+            raise CreatorNotFoundError()
+        return CreatorResponse.model_validate(creator)
+
     # ------------------------------------------------------------------
     # PHONE
     # ------------------------------------------------------------------
@@ -128,6 +135,15 @@ class AuthService:
 
         if not creator.is_active:
             # Silent — don't reveal inactive status
+            return RequestOTPResponse()
+
+        # Cap how many codes one account can be sent per window. Silent, like above,
+        # so the response never reveals that the account exists.
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=self._settings.OTP_REQUEST_WINDOW_MINUTES,
+        )
+        if await self._otp_repo.count_since(creator.id, window_start) >= self._settings.OTP_REQUEST_LIMIT:
+            logger.warning("OTP request limit reached for creator %s", creator.id)
             return RequestOTPResponse()
 
         # Invalidate any previous active OTP
@@ -188,7 +204,11 @@ class AuthService:
             raise InvalidOTPError()
 
         # Check expiry
-        if active_otp.expires_at < datetime.now(timezone.utc):
+        # SQLite hands back naive datetimes; Postgres returns them with a zone.
+        expires_at = active_otp.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
             raise OTPExpiredError()
 
         # Check attempts

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import { authErrorMessage } from "@/lib/auth-errors";
+import { sendLoginCode } from "@/lib/login-code";
 import { safeNext } from "@/lib/safe-next";
 
 type Fields = { name: string; email: string; phone: string };
@@ -56,8 +57,9 @@ export function MemberSignupForm() {
         auth: null,
         body: { name: values.name.trim(), email, phone: values.phone.replace(/[\s-]/g, "") },
       });
+      const sent = await sendLoginCode("/members/request-otp", { email });
       setSubmitting(false);
-      router.push(`/m/login?registered=1&identifier=${encodeURIComponent(email)}${nextQuery}`);
+      router.push(`/m/login?registered=1${sent ? "&sent=1" : ""}&identifier=${encodeURIComponent(email)}${nextQuery}`);
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) setErrors(err.fields as FieldErrors);
       else setFormError(authErrorMessage(err));

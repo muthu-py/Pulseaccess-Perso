@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { session } from "@/lib/api/client";
 import { AuthProvider } from "@/lib/auth";
 
 import { LoginForm } from "./LoginForm";
+import { RESEND_SECONDS } from "./OtpStep";
 import { SignupForm, validateSignup } from "./SignupForm";
 
 const router = { push: vi.fn(), replace: vi.fn() };
@@ -35,7 +36,7 @@ function wrap(ui: ReactNode) {
 
 /** Routes fetch by URL; the refresh call fails unless a test says otherwise. */
 function mockApi(routes: Record<string, () => Response>) {
-  const fetchMock = vi.fn(async (url: string) => {
+  const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => {
     const handler = routes[url.replace("/api/v1", "")];
     return handler ? handler() : respond(401, { detail: "no session" });
   });
@@ -76,8 +77,30 @@ describe("SignupForm", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1); // only the session-restore refresh
   });
 
-  it("registers and goes to login", async () => {
-    mockApi({ "/auth/register": () => respond(201, { success: true, data: { creator: {} } }) });
+  it("registers, sends the first code and opens login on the code step", async () => {
+    const fetchMock = mockApi({
+      "/auth/register": () => respond(201, { success: true, data: { creator: {} } }),
+      "/auth/request-otp": () => respond(200, { success: true, data: { message: "sent" } }),
+    });
+    wrap(<SignupForm />);
+
+    await userEvent.type(screen.getByLabelText(/^Name/), "Asha");
+    await userEvent.type(screen.getByLabelText(/^Username/), "asha_k");
+    await userEvent.type(screen.getByLabelText(/^Email/), "a@b.co");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith("/login?registered=1&sent=1&identifier=a%40b.co"),
+    );
+    const otpCall = fetchMock.mock.calls.find(([url]) => url === "/api/v1/auth/request-otp");
+    expect(JSON.parse(String(otpCall?.[1]?.body))).toEqual({ identifier: "a@b.co" });
+  });
+
+  it("still goes to login if sending the first code fails", async () => {
+    mockApi({
+      "/auth/register": () => respond(201, { success: true, data: { creator: {} } }),
+      "/auth/request-otp": () => respond(503, { detail: "down" }),
+    });
     wrap(<SignupForm />);
 
     await userEvent.type(screen.getByLabelText(/^Name/), "Asha");
@@ -105,12 +128,12 @@ describe("SignupForm", () => {
 
 describe("LoginForm", () => {
   async function reachCodeStep() {
-    await userEvent.type(screen.getByLabelText(/email or username/i), "asha_k");
+    await userEvent.type(await screen.findByLabelText(/email or username/i), "asha_k");
     await userEvent.click(screen.getByRole("button", { name: /send code/i }));
     await screen.findByLabelText(/6-digit code/i);
   }
 
-  it("requests a code, shows the generic message, then verifies and enters the app", async () => {
+  it("requests a code, shows the generic message, then logs in as soon as six digits are typed", async () => {
     mockApi({
       "/auth/request-otp": () => respond(200, { success: true, data: { message: "sent" } }),
       "/auth/verify-otp": () => respond(200, { success: true, data: { access_token: "tok", token_type: "bearer" } }),
@@ -118,13 +141,43 @@ describe("LoginForm", () => {
     wrap(<LoginForm />);
 
     await reachCodeStep();
-    expect(screen.getByText("If an account exists, a code has been sent.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("If an account matches asha_k, we've sent it a 6-digit code.");
 
     await userEvent.type(screen.getByLabelText(/6-digit code/i), "123456");
-    await userEvent.click(screen.getByRole("button", { name: /^log in$/i }));
 
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/app"));
     expect(session.get()).toBe("tok");
+  });
+
+  it("opens on the code step right after signup", async () => {
+    search = "registered=1&sent=1&identifier=a%40b.co";
+    mockApi({});
+    wrap(<LoginForm />);
+
+    expect(await screen.findByLabelText(/6-digit code/i)).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent(/account created.*a@b\.co/i);
+  });
+
+  it("locks resending for a short while, then sends a new code", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const fetchMock = mockApi({ "/auth/request-otp": () => respond(200, { success: true, data: {} }) });
+      wrap(<LoginForm />);
+      await reachCodeStep();
+
+      const resend = screen.getByRole("button", { name: /send a new code in \d+s/i });
+      expect(resend).toBeDisabled();
+
+      // The countdown ticks once per render, so step the clock a second at a time.
+      for (let i = 0; i < RESEND_SECONDS; i++) await act(() => vi.advanceTimersByTimeAsync(1000));
+      const unlocked = await screen.findByRole("button", { name: /^send a new code$/i });
+      await userEvent.click(unlocked);
+
+      expect(await screen.findByText(/new code sent/i)).toBeInTheDocument();
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1/auth/request-otp")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([
@@ -140,7 +193,6 @@ describe("LoginForm", () => {
 
     await reachCodeStep();
     await userEvent.type(screen.getByLabelText(/6-digit code/i), "123456");
-    await userEvent.click(screen.getByRole("button", { name: /^log in$/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(session.get()).toBeNull();
@@ -163,16 +215,28 @@ describe("LoginForm", () => {
     mockApi({ "/auth/request-otp": () => respond(429, { detail: "Too many requests" }) });
     wrap(<LoginForm />);
 
-    await userEvent.type(screen.getByLabelText(/email or username/i), "asha_k");
+    await userEvent.type(await screen.findByLabelText(/email or username/i), "asha_k");
     await userEvent.click(screen.getByRole("button", { name: /send code/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/too many requests/i);
   });
 
-  it("skips the form when the refresh cookie already restores a session", async () => {
-    mockApi({ "/auth/refresh": () => respond(200, { success: true, data: { access_token: "t" } }) });
+  it("never skips the code when an old session exists: names the account and offers to switch", async () => {
+    const fetchMock = mockApi({
+      "/auth/refresh": () => respond(200, { success: true, data: { access_token: "t" } }),
+      "/auth/me": () => respond(200, { success: true, data: { name: "Naveen", email: "naveen@example.com" } }),
+      "/auth/logout": () => respond(200, { success: true, data: { message: "bye" } }),
+    });
     wrap(<LoginForm />);
-    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/app"));
+
+    expect(await screen.findByText("Naveen")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /continue to dashboard/i })).toHaveAttribute("href", "/app");
+    expect(router.replace).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /log out and use another account/i }));
+    expect(await screen.findByLabelText(/email or username/i)).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/auth/logout")).toBe(true);
+    expect(session.get()).toBeNull();
   });
 });
 

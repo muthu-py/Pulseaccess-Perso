@@ -142,3 +142,18 @@ async def update_phone(
     """Set or change the creator's phone number."""
     result = await auth_service.update_phone(creator_id, request)
     return BaseSuccessResponse(data=result)
+
+
+@router.get(
+    "/me",
+    response_model=BaseSuccessResponse[CreatorResponse],
+    summary="Current Creator",
+    description="Returns the logged-in creator's profile.",
+)
+async def get_me(
+    creator_id: uuid.UUID = Depends(get_current_creator),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> BaseSuccessResponse[CreatorResponse]:
+    """Return the authenticated creator."""
+    result = await auth_service.get_me(creator_id)
+    return BaseSuccessResponse(data=result)

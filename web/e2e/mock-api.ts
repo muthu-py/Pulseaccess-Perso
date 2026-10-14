@@ -82,6 +82,11 @@ export async function mockApi(page: Page, state: MockState) {
         ? route.fulfill(ok({ access_token: "creator-token", token_type: "bearer" }))
         : route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "no session" }) });
     }
+    if (key === "GET /auth/me") {
+      return auth === "Bearer creator-token"
+        ? route.fulfill(ok({ id: "u1", name: "Naveen", username: "naveen_k", email: "naveen@example.com", phone: null, is_active: true, created_at: "2026-10-01T00:00:00Z" }))
+        : route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Not authenticated" }) });
+    }
     if (key === "POST /auth/logout") {
       state.creatorLoggedIn = false;
       return route.fulfill(ok({ message: "bye" }));

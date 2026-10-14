@@ -3,8 +3,11 @@
  *
  * - Unwraps `{ success: true, data }` envelopes.
  * - Turns every failure into an `ApiError` with a stable `code`.
- * - Keeps access tokens in memory only. Creators silently refresh through the
- *   HttpOnly cookie on 401; members have no refresh endpoint and must log in again.
+ * - Creator access tokens live in memory only and are silently refreshed through
+ *   the HttpOnly cookie on 401.
+ * - Members have no refresh endpoint, so their short-lived token is also kept in
+ *   localStorage until it expires. Otherwise every reload, and the return from a
+ *   Razorpay tab, would log them out.
  */
 
 export const API_BASE = "/api/v1";
@@ -31,22 +34,83 @@ type Role = "creator" | "member";
 
 const tokens: Record<Role, string | null> = { creator: null, member: null };
 
-export const session = {
-  get: (role: Role = "creator") => tokens[role],
-  set: (token: string | null, role: Role = "creator") => {
-    tokens[role] = token;
+/** localStorage key for the member token. */
+export const MEMBER_TOKEN_KEY = "pulseaccess.member_token";
+
+/** When a JWT expires, in ms since epoch. Null if it can't be read. */
+export function tokenExpiry(token: string): number | null {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const exp = (JSON.parse(atob(payload)) as { exp?: unknown }).exp;
+    return typeof exp === "number" ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+function isExpired(token: string): boolean {
+  const exp = tokenExpiry(token);
+  return exp !== null && exp <= Date.now();
+}
+
+// Storage can be missing (server render) or throw (private mode, blocked site data).
+const stored = {
+  read(): string | null {
+    try {
+      return typeof window === "undefined" ? null : window.localStorage.getItem(MEMBER_TOKEN_KEY);
+    } catch {
+      return null;
+    }
   },
-  clear: (role: Role = "creator") => {
-    tokens[role] = null;
+  write(token: string | null) {
+    try {
+      if (typeof window === "undefined") return;
+      if (token) window.localStorage.setItem(MEMBER_TOKEN_KEY, token);
+      else window.localStorage.removeItem(MEMBER_TOKEN_KEY);
+    } catch {
+      // Memory still holds the token for this page.
+    }
   },
 };
 
-const memberExpiredListeners = new Set<() => void>();
+const memberTokenListeners = new Set<() => void>();
+const notifyMemberToken = () => memberTokenListeners.forEach((listener) => listener());
 
-/** Called when a signed-in member's token is rejected. Members can't refresh, so they must log in again. */
-export function onMemberSessionExpired(listener: () => void): () => void {
-  memberExpiredListeners.add(listener);
-  return () => memberExpiredListeners.delete(listener);
+export const session = {
+  get: (role: Role = "creator") => {
+    if (role === "member") {
+      tokens.member ??= stored.read();
+      // Treat an expired token as gone. The provider's expiry timer clears storage.
+      if (tokens.member && isExpired(tokens.member)) return null;
+    }
+    return tokens[role];
+  },
+  set: (token: string | null, role: Role = "creator") => {
+    tokens[role] = token;
+    if (role === "member") {
+      stored.write(token);
+      notifyMemberToken();
+    }
+  },
+  clear: (role: Role = "creator") => session.set(null, role),
+};
+
+/**
+ * Subscribe to member token changes, including logins and logouts in other tabs.
+ * Shaped for `useSyncExternalStore`.
+ */
+export function subscribeMemberToken(listener: () => void): () => void {
+  memberTokenListeners.add(listener);
+  function onStorage(e: StorageEvent) {
+    if (e.key !== MEMBER_TOKEN_KEY && e.key !== null) return;
+    tokens.member = stored.read();
+    listener();
+  }
+  window.addEventListener("storage", onStorage);
+  return () => {
+    memberTokenListeners.delete(listener);
+    window.removeEventListener("storage", onStorage);
+  };
 }
 
 type RequestOptions = {
@@ -138,10 +202,9 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
     payload = undefined;
   }
 
-  if (res.status === 401 && role === "member" && session.get("member")) {
-    session.clear("member");
-    memberExpiredListeners.forEach((listener) => listener());
-  }
+  // Members can't refresh: a rejected token means logging in again. Clearing it
+  // notifies the member provider, which sends the shell back to login.
+  if (res.status === 401 && role === "member" && session.get("member")) session.clear("member");
 
   if (!res.ok) throw toApiError(res.status, payload);
   return (payload && "data" in payload ? payload.data : payload) as T;

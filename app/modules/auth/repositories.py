@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import Creator, LoginOTP, RefreshToken
@@ -133,6 +133,15 @@ class OTPRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def count_since(self, creator_id: uuid.UUID, since: datetime) -> int:
+        """Count OTPs issued to a creator since `since` (for request rate limiting)."""
+        stmt = select(func.count(LoginOTP.id)).where(
+            LoginOTP.creator_id == creator_id,
+            LoginOTP.created_at >= since,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def invalidate_active(
         self,

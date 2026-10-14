@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import { authErrorMessage } from "@/lib/auth-errors";
+import { sendLoginCode } from "@/lib/login-code";
 
 type Fields = { name: string; username: string; email: string; phone: string };
 type FieldErrors = Partial<Record<keyof Fields, string>>;
@@ -54,8 +55,10 @@ export function SignupForm() {
         auth: null,
         body: { name: values.name.trim(), username: values.username, email, ...(phone ? { phone } : {}) },
       });
+      // Send the first code now so login opens on the code step. If it fails, login can request one.
+      const sent = await sendLoginCode("/auth/request-otp", { identifier: email });
       setSubmitting(false);
-      router.push(`/login?registered=1&identifier=${encodeURIComponent(email)}`);
+      router.push(`/login?registered=1${sent ? "&sent=1" : ""}&identifier=${encodeURIComponent(email)}`);
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) {
         setErrors(err.fields as FieldErrors);

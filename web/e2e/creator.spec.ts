@@ -14,17 +14,14 @@ test("creator: sign up, log in, connect Telegram, create a community, connect th
   await page.getByLabel("Email").fill("asha@example.com");
   await page.getByRole("button", { name: "Create account" }).click();
 
-  // Log in with an emailed code
-  await expect(page).toHaveURL(/\/login\?registered=1/);
+  // Signup already sent the first code, so login opens on the code step. Six digits submit by themselves.
+  await expect(page).toHaveURL(/\/login\?registered=1&sent=1/);
   await expect(page.getByText("Account created")).toBeVisible();
-  await page.getByRole("button", { name: "Send code" }).click();
-  await expect(page.getByText("If an account exists, a code has been sent.")).toBeVisible();
+  await expect(page.getByText("We sent a 6-digit code to asha@example.com.")).toBeVisible();
   await page.getByLabel("6-digit code").fill("000000");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
   // Next also renders its own route announcer with role=alert, so look inside <main>.
   await expect(page.locator('main [role="alert"]')).toContainText("isn't right");
   await page.getByLabel("6-digit code").fill("123456");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
 
   // New creators are sent to onboarding
   await expect(page).toHaveURL(/\/app\/onboarding/);
@@ -58,6 +55,23 @@ test("creator: sign up, log in, connect Telegram, create a community, connect th
   // Log out returns to login
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("creator: an earlier session never skips the code on the login page", async ({ page }) => {
+  const state = initialState();
+  state.creatorLoggedIn = true; // refresh cookie left over from someone else's login
+  await mockApi(page, state);
+
+  await page.goto("/login");
+  await expect(page.getByText("This browser is already logged in.")).toBeVisible();
+  await expect(page.getByText("Naveen", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+
+  await page.getByRole("button", { name: "Log out and use another account" }).click();
+  await page.getByLabel("Email or username").fill("asha_k");
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("6-digit code").fill("123456");
+  await expect(page).toHaveURL(/\/app/);
 });
 
 test("creator: signed-out visitors are sent to login", async ({ page }) => {

@@ -74,6 +74,14 @@ class MemberService:
         if member is None or not member.is_active:
             return MemberRequestOTPResponse()
 
+        # Cap codes per account per window; silent so the response stays the same.
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=self._settings.OTP_REQUEST_WINDOW_MINUTES,
+        )
+        if await self._repo.count_otps_since(member.id, window_start) >= self._settings.OTP_REQUEST_LIMIT:
+            logger.warning("OTP request limit reached for member %s", member.id)
+            return MemberRequestOTPResponse()
+
         await self._repo.invalidate_active_otps(member.id)
 
         otp_code = self._security.generate_otp(length=self._settings.OTP_LENGTH)

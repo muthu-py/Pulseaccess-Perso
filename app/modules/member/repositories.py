@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.member.models import Member, MemberLoginOTP
@@ -67,6 +67,14 @@ class MemberRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def count_otps_since(self, member_id: uuid.UUID, since: datetime) -> int:
+        stmt = select(func.count(MemberLoginOTP.id)).where(
+            MemberLoginOTP.member_id == member_id,
+            MemberLoginOTP.created_at >= since,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def invalidate_active_otps(self, member_id: uuid.UUID) -> None:
         stmt = (

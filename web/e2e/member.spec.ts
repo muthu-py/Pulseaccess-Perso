@@ -13,7 +13,6 @@ test("member: opens a community link, logs in, pays and sees the real payment st
   await page.getByLabel("Email").fill("ravi@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByLabel("6-digit code").fill("123456");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
 
   await expect(page).toHaveURL(/\/c\/c1$/);
   await expect(page.getByText("30 days")).toBeVisible();
@@ -46,7 +45,6 @@ test("member: asked to connect Telegram before paying, then returned to the plan
   await page.getByLabel("Email").fill("ravi@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByLabel("6-digit code").fill("123456");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
 
   await expect(page.getByText("Connect Telegram before you pay.")).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Connect Telegram" }).click();
@@ -62,9 +60,12 @@ test("member: a rejected token sends them back to login", async ({ page }) => {
   await page.getByLabel("Email").fill("ravi@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByLabel("6-digit code").fill("123456");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page).toHaveURL(/\/m\/subscriptions/);
 
+  await expect(page.getByRole("heading", { name: "My subscriptions" })).toBeVisible();
+
+  // A reload (or coming back from the Razorpay tab) keeps them logged in.
+  await page.reload();
   await expect(page.getByRole("heading", { name: "My subscriptions" })).toBeVisible();
 
   // The server stops accepting the token. The next request that member makes finds out.
@@ -80,12 +81,11 @@ test("member pages have no serious a11y issues and no sideways scroll", async ({
   state.memberLoggedIn = true;
   await mockApi(page, state);
 
-  // Log in once in this page so the in-memory token exists
+  // Log in once so the member token exists
   await page.goto("/m/login?next=%2Fc%2Fc1");
   await page.getByLabel("Email").fill("ravi@example.com");
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByLabel("6-digit code").fill("123456");
-  await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page.getByText("30 days")).toBeVisible();
 
   const checks: [string, () => Promise<void>][] = [
@@ -113,6 +113,5 @@ test("member login works by keyboard alone", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("6-digit code")).toBeVisible();
   await page.keyboard.type("123456");
-  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/\/m\/subscriptions/);
 });
