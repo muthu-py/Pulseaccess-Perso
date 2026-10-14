@@ -16,6 +16,8 @@ import { creatorKeys, useCommunity } from "@/lib/creator";
 import { errorText } from "@/lib/errors";
 
 import { CommunityForm } from "./CommunityForm";
+import { PlansSection } from "@/components/plans/PlansSection";
+
 import { ConnectionPanel } from "./ConnectionPanel";
 
 export function CommunityDetail() {
@@ -88,6 +90,8 @@ export function CommunityDetail() {
       {actionError && <Alert tone="danger" title={actionError} />}
 
       <ConnectionPanel communityId={community.id} />
+
+      <PlansSection communityId={community.id} />
 
       {editing ? (
         <CommunityForm

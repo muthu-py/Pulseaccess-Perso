@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiRequest } from "@/lib/api/client";
-import type { Community, CommunityList, GroupConnection, TelegramConnection } from "@/lib/api/types";
+import type { Community, CommunityList, GroupConnection, Plan, TelegramConnection } from "@/lib/api/types";
 
 export const creatorKeys = {
   telegram: ["creator", "telegram"] as const,
@@ -56,5 +56,12 @@ export function useGroupConnection(communityId: string) {
     queryKey: [...creatorKeys.communities, "connection", communityId],
     queryFn: () => apiRequest<GroupConnection>(`/telegram/communities/${communityId}/status`),
     refetchInterval: (query) => (query.state.data?.status === "CONNECTED" ? false : 4000),
+  });
+}
+
+export function usePlans(communityId: string) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "plans", communityId],
+    queryFn: () => apiRequest<Plan[]>(`/communities/${communityId}/plans`),
   });
 }

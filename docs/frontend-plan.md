@@ -140,7 +140,7 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
   (name, description). Explain `PENDING_TELEGRAM_CONNECTION` inline.
 - Edit name/description; activate/deactivate with a confirm dialog.
 
-### ✅ Step 5: Group connection panel (done, not committed)
+### ✅ Step 5: Group connection panel (done, committed)
 
 - On `/app/communities/[id]`: a step list driven by the real status.
   - NOT_CONNECTED: instructions (add `@<TELEGRAM_BOT_USERNAME>` to the group,
@@ -150,7 +150,7 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
   - NEEDS_ATTENTION: what to fix (admin rights, or re-add the bot).
 - Bot username: from config/env (`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`).
 
-### Step 6: Plans
+### ✅ Step 6: Plans (done, not committed)
 
 - On the community page: plans table (name, price, duration, active), create
   and edit forms (price in rupees with `₹` prefix, duration in days),

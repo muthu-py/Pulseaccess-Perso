@@ -34,6 +34,7 @@ type Handler = (init: RequestInit) => Response;
 function mockApi(routes: Record<string, Handler>) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     const key = `${init.method ?? "GET"} ${url.replace("/api/v1", "")}`;
+    if (key === "GET /communities/c1/plans") return ok([]);
     if (key.startsWith("GET /telegram/communities/")) return ok({ status: "NOT_CONNECTED" });
     const handler = routes[key] ?? routes[key.split("?")[0]];
     return handler ? handler(init) : respond(500, { detail: `unmocked ${key}` });
