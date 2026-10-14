@@ -1,21 +1,50 @@
 "use client";
 
+import { useState } from "react";
+
 import { Alert } from "@/components/ui/Alert";
 import { Pulse } from "@/components/ui/Brand";
+import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { LoadingRow } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { useGroupConnection } from "@/lib/creator";
+import { useDisconnectGroup, useGroupConnection } from "@/lib/creator";
 import { errorText } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 
 function Bot() {
-  const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
-  return BOT_USERNAME ? (
-    <strong translate="no" className="font-medium text-ink">
-      @{BOT_USERNAME}
-    </strong>
+  const raw = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "";
+  const BOT_HANDLE = raw.startsWith("@") ? raw : raw ? `@${raw}` : "";
+  return BOT_HANDLE ? (
+    <strong translate="no" className="font-medium text-ink">{BOT_HANDLE}</strong>
   ) : (
     <>the PulseAccess bot</>
+  );
+}
+
+function CopyBotButton() {
+  const [copied, setCopied] = useState(false);
+  const raw = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "";
+  const BOT_HANDLE = raw.startsWith("@") ? raw : raw ? `@${raw}` : "";
+  if (!BOT_HANDLE) return null;
+
+  function copy() {
+    void navigator.clipboard.writeText(BOT_HANDLE).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-live="polite"
+      className="inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-control)] border border-line-strong px-2.5 text-xs font-medium text-ink-muted transition-colors hover:border-ink-subtle hover:text-ink"
+    >
+      <span translate="no" className="font-mono">{BOT_HANDLE}</span>
+      <span aria-hidden="true">{copied ? "✓" : "Copy"}</span>
+    </button>
   );
 }
 
@@ -38,6 +67,20 @@ function Permissions() {
 /** Telegram group connection, driven entirely by the status the backend reports. */
 export function ConnectionPanel({ communityId }: { communityId: string }) {
   const { data, error, isPending } = useGroupConnection(communityId);
+  const disconnect = useDisconnectGroup(communityId);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+
+  async function handleDisconnect() {
+    setDisconnectError(null);
+    try {
+      await disconnect.mutateAsync();
+      setConfirmDisconnect(false);
+    } catch (err) {
+      setConfirmDisconnect(false);
+      setDisconnectError(errorText(err));
+    }
+  }
 
   return (
     <section aria-labelledby="group-heading" className="flex flex-col gap-5 rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-6">
@@ -56,19 +99,39 @@ export function ConnectionPanel({ communityId }: { communityId: string }) {
         </Alert>
       )}
 
+      {disconnectError && <Alert tone="danger" title={disconnectError} />}
+
       {data?.status === "CONNECTED" && (
-        <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-[auto_1fr]">
-          <dt className="text-ink-muted">Group chat ID</dt>
-          <dd translate="no" className="font-mono break-all">
-            {data.telegram_chat_id ?? "Unknown"}
-          </dd>
-          {data.connected_at && (
-            <>
-              <dt className="text-ink-muted">Connected</dt>
-              <dd className="tabular">{formatDateTime(data.connected_at)}</dd>
-            </>
-          )}
-        </dl>
+        <>
+          <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-ink-muted">Group chat ID</dt>
+            <dd translate="no" className="font-mono break-all">
+              {data.telegram_chat_id ?? "Unknown"}
+            </dd>
+            {data.connected_at && (
+              <>
+                <dt className="text-ink-muted">Connected</dt>
+                <dd className="tabular">{formatDateTime(data.connected_at)}</dd>
+              </>
+            )}
+          </dl>
+
+          {/* Danger zone: disconnect the group */}
+          <div className="mt-2 rounded-[var(--radius-card)] border border-danger-soft bg-danger-soft px-4 py-4 sm:px-5">
+            <h3 className="mb-1 text-sm font-semibold text-danger">Danger zone</h3>
+            <p className="mb-3 text-sm text-ink-muted">
+              Disconnecting removes the bot from managing this group. Business data (plans, subscriptions) is kept. You can reconnect later.
+            </p>
+            <Button
+              variant="danger"
+              size="sm"
+              id="disconnect-group-btn"
+              onClick={() => setConfirmDisconnect(true)}
+            >
+              Disconnect group
+            </Button>
+          </div>
+        </>
       )}
 
       {data?.status === "NEEDS_ATTENTION" && (
@@ -87,7 +150,8 @@ export function ConnectionPanel({ communityId }: { communityId: string }) {
               Or create one. Use the Telegram account you connected to PulseAccess.
             </SetupStep>
             <SetupStep n={2} title={<>Add <Bot /> as a member</>}>
-              Search for it by username in the group&apos;s Add members screen.
+              Search for it by username in the group&apos;s Add members screen.{" "}
+              <CopyBotButton />
             </SetupStep>
             <SetupStep n={3} title="Make it an admin with these permissions">
               <Permissions />
@@ -97,6 +161,20 @@ export function ConnectionPanel({ communityId }: { communityId: string }) {
             <Pulse>Waiting for the bot to be added. This page updates by itself.</Pulse>
           </div>
         </>
+      )}
+
+      {confirmDisconnect && (
+        <ConfirmDialog
+          title="Disconnect this group?"
+          confirmLabel="Disconnect"
+          danger
+          busy={disconnect.isPending}
+          onConfirm={handleDisconnect}
+          onCancel={() => setConfirmDisconnect(false)}
+        >
+          The bot will stop managing this group. Members won&apos;t be removed, but new join requests won&apos;t be
+          approved. Business data is kept. You can reconnect by adding the bot as admin again.
+        </ConfirmDialog>
       )}
     </section>
   );
@@ -115,4 +193,3 @@ function SetupStep({ n, title, children }: { n: number; title: React.ReactNode; 
     </li>
   );
 }
-

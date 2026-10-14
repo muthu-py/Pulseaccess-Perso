@@ -48,3 +48,11 @@ export function useSubscriptions() {
     queryFn: () => apiRequest<SubscriptionList>("/subscriptions/me", { auth: "member" }),
   });
 }
+
+/** Fetches the Telegram group join-link for a community the member has an active subscription for. */
+export async function fetchInviteLink(communityId: string): Promise<{ invite_link: string; expires_at?: string | null }> {
+  return apiRequest<{ invite_link: string; expires_at?: string | null }>(`/telegram/communities/${communityId}/invite`, {
+    method: "POST",
+    auth: "member",
+  });
+}

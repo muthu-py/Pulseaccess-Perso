@@ -150,6 +150,26 @@ class PaymentService:
         if order is None or order.member_id != member_id:
             raise PaymentNotFoundError()
 
+        # Active sync with Razorpay: if still CREATED, check if the payment link was paid.
+        # This guarantees state updates even if webhooks are delayed, dropped, or in local dev.
+        if order.status == PaymentOrderStatus.CREATED.value and order.razorpay_payment_link_id:
+            try:
+                link_data = await self._razorpay.fetch_payment_link(order.razorpay_payment_link_id)
+                if link_data.get("status") == "paid":
+                    payments = link_data.get("payments", [])
+                    payment_id_str = payments[0].get("payment_id") if payments else None
+                    await self._mark_paid(
+                        order,
+                        amount=link_data.get("amount_paid", order.amount_paise),
+                        currency=link_data.get("currency", order.currency),
+                        razorpay_payment_id=payment_id_str,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "Could not sync payment link %s with Razorpay: %s",
+                    order.razorpay_payment_link_id, exc,
+                )
+
         if (
             order.status == PaymentOrderStatus.CREATED.value
             and order.expires_at is not None
@@ -157,6 +177,12 @@ class PaymentService:
         ):
             order.status = PaymentOrderStatus.EXPIRED.value
             await self._repo.save_order(order)
+
+        # Attach community_id so the frontend can generate the join invite link
+        plan = await self._repo.get_plan_by_id(order.plan_id)
+        if plan:
+            setattr(order, "community_id", plan.community_id)
+
         return order
 
     # ══════════════════════════════════════════════════════════════════

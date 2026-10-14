@@ -14,6 +14,7 @@ class SubscriptionResponse(BaseModel):
     id: uuid.UUID
     member_id: uuid.UUID
     plan_id: uuid.UUID
+    community_id: uuid.UUID | None = None
     status: str
     starts_at: datetime
     ends_at: datetime

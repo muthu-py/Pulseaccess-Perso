@@ -76,6 +76,18 @@ const stored = {
 const memberTokenListeners = new Set<() => void>();
 const notifyMemberToken = () => memberTokenListeners.forEach((listener) => listener());
 
+/** Listeners called whenever the member session is cleared because the backend returned 401. */
+const memberSessionExpiredListeners = new Set<() => void>();
+
+/**
+ * Subscribe to member session expiry (401 from a member-authed request).
+ * Returns an unsubscribe function, shaped for useEffect.
+ */
+export function onMemberSessionExpired(listener: () => void): () => void {
+  memberSessionExpiredListeners.add(listener);
+  return () => memberSessionExpiredListeners.delete(listener);
+}
+
 export const session = {
   get: (role: Role = "creator") => {
     if (role === "member") {
@@ -204,7 +216,10 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
 
   // Members can't refresh: a rejected token means logging in again. Clearing it
   // notifies the member provider, which sends the shell back to login.
-  if (res.status === 401 && role === "member" && session.get("member")) session.clear("member");
+  if (res.status === 401 && role === "member" && session.get("member")) {
+    session.clear("member");
+    memberSessionExpiredListeners.forEach((l) => l());
+  }
 
   if (!res.ok) throw toApiError(res.status, payload);
   return (payload && "data" in payload ? payload.data : payload) as T;

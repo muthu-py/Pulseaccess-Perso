@@ -28,7 +28,7 @@ export function CommunityPlans() {
   const pay = useMutation({
     mutationFn: (planId: string) =>
       apiRequest<Payment>(`/plans/${planId}/payment-link`, { method: "POST", auth: "member" }),
-    onSuccess: (payment) => router.push(`/m/payments/${payment.id}`),
+    onSuccess: (payment) => router.push(`/m/payments/${payment.id}?communityId=${encodeURIComponent(communityId)}`),
     onError: (err) => {
       setPayingId(null);
       if (err instanceof ApiError && err.code === "TELEGRAM_NOT_CONNECTED") {
@@ -52,6 +52,21 @@ export function CommunityPlans() {
   return (
     <div className="flex flex-col gap-8">
       <PageHeader title="Choose a plan" description="Pay once for the days shown. Payment happens on Razorpay." />
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">1</span>
+          <span className="text-sm font-medium text-ink">Choose a plan</span>
+        </div>
+        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">2</span>
+          <span className="text-sm font-medium text-ink">Connect Telegram</span>
+        </div>
+        <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3.5">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">3</span>
+          <span className="text-sm font-medium text-ink">Instant group invite</span>
+        </div>
+      </div>
 
       {telegramMissing && (
         <Alert tone="warning" title="Connect Telegram before you pay.">

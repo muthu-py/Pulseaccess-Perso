@@ -11,7 +11,11 @@ import { Subscriptions } from "./Subscriptions";
 
 const router = { push: vi.fn(), replace: vi.fn() };
 let params: Record<string, string> = {};
-vi.mock("next/navigation", () => ({ useRouter: () => router, useParams: () => params }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+  useParams: () => params,
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 function respond(status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -85,7 +89,7 @@ describe("CommunityPlans", () => {
     expect(screen.getByRole("button", { name: "Pay for Monthly" })).toHaveTextContent("Pay ₹499");
     await userEvent.click(screen.getByRole("button", { name: "Pay for Monthly" }));
 
-    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith("/m/payments/pay1"));
+    await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith("/m/payments/pay1?communityId=c1"));
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect((post[1]!.headers as Record<string, string>).Authorization).toBe("Bearer mtok");
   });

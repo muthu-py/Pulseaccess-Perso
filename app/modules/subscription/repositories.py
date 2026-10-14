@@ -19,9 +19,21 @@ class SubscriptionRepository:
 
     async def get_by_id(self, subscription_id: uuid.UUID) -> Subscription | None:
         """Fetch a subscription by its primary key."""
-        stmt = select(Subscription).where(Subscription.id == subscription_id)
+        from app.modules.plan.models import Plan
+
+        stmt = (
+            select(Subscription, Plan.community_id)
+            .outerjoin(Plan, Plan.id == Subscription.plan_id)
+            .where(Subscription.id == subscription_id)
+        )
         result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
+        row = result.first()
+        if not row:
+            return None
+        sub, community_id = row
+        if community_id is not None:
+            setattr(sub, "community_id", community_id)
+        return sub
 
     async def get_active_by_member_and_plan(
         self, member_id: uuid.UUID, plan_id: uuid.UUID
@@ -44,13 +56,21 @@ class SubscriptionRepository:
 
     async def get_by_member_id(self, member_id: uuid.UUID) -> Sequence[Subscription]:
         """List all subscriptions belonging to a member."""
+        from app.modules.plan.models import Plan
+
         stmt = (
-            select(Subscription)
+            select(Subscription, Plan.community_id)
+            .outerjoin(Plan, Plan.id == Subscription.plan_id)
             .where(Subscription.member_id == member_id)
             .order_by(desc(Subscription.created_at))
         )
         result = await self._session.execute(stmt)
-        return result.scalars().all()
+        subs: list[Subscription] = []
+        for sub, community_id in result.all():
+            if community_id is not None:
+                setattr(sub, "community_id", community_id)
+            subs.append(sub)
+        return subs
 
     async def create(
         self,

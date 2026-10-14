@@ -72,7 +72,7 @@ test("member: a rejected token sends them back to login", async ({ page }) => {
   await page.route("**/api/v1/telegram/connect/member", (route) =>
     route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Token expired" }) }),
   );
-  await page.getByRole("link", { name: "Telegram" }).click();
+  await page.getByRole("link", { name: "Telegram", exact: true }).click();
   await expect(page).toHaveURL(/\/m\/login\?next=/);
 });
 
@@ -91,7 +91,7 @@ test("member pages have no serious a11y issues and no sideways scroll", async ({
   const checks: [string, () => Promise<void>][] = [
     ["plans", async () => {}],
     ["subscriptions", async () => { await page.getByRole("link", { name: "My subscriptions" }).click(); await expect(page.getByRole("heading", { name: "My subscriptions" })).toBeVisible(); }],
-    ["telegram", async () => { await page.getByRole("link", { name: "Telegram" }).click(); await expect(page.getByRole("heading", { name: "Connect Telegram" })).toBeVisible(); }],
+    ["telegram", async () => { await page.getByRole("link", { name: "Telegram", exact: true }).click(); await expect(page.getByRole("heading", { name: "Connect Telegram" })).toBeVisible(); }],
   ];
 
   for (const [name, go] of checks) {

@@ -7,6 +7,7 @@ export type MockState = {
   creatorTelegramConnected: boolean;
   communities: { id: string; name: string; description: string | null }[];
   groupStatus: "NOT_CONNECTED" | "CONNECTED" | "NEEDS_ATTENTION";
+  groupDisconnected: boolean;
   plans: Record<string, unknown>[];
   memberLoggedIn: boolean;
   memberTelegramConnected: boolean;
@@ -21,6 +22,7 @@ export function initialState(): MockState {
     creatorTelegramConnected: false,
     communities: [],
     groupStatus: "NOT_CONNECTED",
+    groupDisconnected: false,
     plans: [],
     memberLoggedIn: false,
     memberTelegramConnected: true,
@@ -121,6 +123,15 @@ export async function mockApi(page: Page, state: MockState) {
       return route.fulfill(
         ok({ status: state.groupStatus, telegram_chat_id: state.groupStatus === "CONNECTED" ? "-1001234567890" : null, connected_at: null }),
       );
+    }
+    if (key === "DELETE /telegram/communities/c1") {
+      state.groupStatus = "NOT_CONNECTED";
+      state.groupDisconnected = true;
+      return route.fulfill({ status: 204, contentType: "application/json", body: "" });
+    }
+    if (key === "POST /telegram/communities/c1/invite") {
+      if (auth !== "Bearer member-token") return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Not authenticated" }) });
+      return route.fulfill(ok({ invite_link: "https://t.me/+abc123" }));
     }
     if (key === "GET /communities/c1/plans") return route.fulfill(ok(state.plans));
     if (key === "POST /communities/c1/plans") {

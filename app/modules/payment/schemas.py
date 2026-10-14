@@ -30,6 +30,7 @@ class PaymentLinkResponse(BaseModel):
 
     id: uuid.UUID
     plan_id: uuid.UUID
+    community_id: uuid.UUID | None = None
     amount_paise: int
     currency: str
     status: str

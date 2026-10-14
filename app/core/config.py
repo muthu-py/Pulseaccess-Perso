@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -101,7 +102,10 @@ class Settings(BaseSettings):
     # Razorpay Integration
     # ------------------------------------------------------------------
     RAZORPAY_KEY_ID: str = ""
-    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_KEY_SECRET: str = Field(
+        "",
+        validation_alias=AliasChoices("RAZORPAY_KEY_SECRET", "RPAY_KEY_SECRET"),
+    )
     RAZORPAY_WEBHOOK_SECRET: str = ""
     RAZORPAY_API_BASE_URL: str = "https://api.razorpay.com/v1"
     # Payment links expire after this long (Razorpay minimum: 15 minutes)

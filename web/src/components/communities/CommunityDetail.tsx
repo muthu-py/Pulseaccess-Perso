@@ -16,9 +16,9 @@ import { creatorKeys, useCommunity } from "@/lib/creator";
 import { errorText } from "@/lib/errors";
 
 import { CommunityForm } from "./CommunityForm";
-import { PlansSection } from "@/components/plans/PlansSection";
-
 import { ConnectionPanel } from "./ConnectionPanel";
+import { PlansSection } from "@/components/plans/PlansSection";
+import { ShareLink } from "./ShareLink";
 
 export function CommunityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -116,6 +116,13 @@ export function CommunityDetail() {
       )}
 
       <ConnectionPanel communityId={community.id} />
+
+      <ShareLink
+        communityId={community.id}
+        communityName={community.name}
+        isConnected={community.telegram_connected}
+        isActive={community.is_active}
+      />
 
       <PlansSection communityId={community.id} />
 

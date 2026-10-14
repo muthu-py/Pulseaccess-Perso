@@ -1,9 +1,9 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiRequest } from "@/lib/api/client";
-import type { Community, CommunityList, GroupConnection, Plan, TelegramConnection } from "@/lib/api/types";
+import type { Community, CommunityList, Creator, GroupConnection, Plan, TelegramConnection } from "@/lib/api/types";
 
 export const creatorKeys = {
   telegram: ["creator", "telegram"] as const,
@@ -63,5 +63,30 @@ export function usePlans(communityId: string) {
   return useQuery({
     queryKey: [...creatorKeys.communities, "plans", communityId],
     queryFn: () => apiRequest<Plan[]>(`/communities/${communityId}/plans`),
+  });
+}
+
+/** Creator profile from GET /auth/me. Used on the Settings page. */
+export function useCreatorMe() {
+  return useQuery({
+    queryKey: ["creator", "me"],
+    queryFn: () => apiRequest<Creator>("/auth/me"),
+  });
+}
+
+/** Disconnects the Telegram group from a community (DELETE /telegram/communities/{id}). */
+export function useDisconnectGroup(communityId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/telegram/communities/${communityId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [...creatorKeys.communities, "connection", communityId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [...creatorKeys.communities, "detail", communityId],
+      });
+    },
   });
 }

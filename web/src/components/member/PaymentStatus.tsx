@@ -1,21 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Pulse } from "@/components/ui/Brand";
-import { buttonClass } from "@/components/ui/Button";
+import { Button, buttonClass } from "@/components/ui/Button";
 import { LoadingRow } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { errorText } from "@/lib/errors";
 import { formatDateTime, formatRupees } from "@/lib/format";
-import { usePayment } from "@/lib/member";
+import { fetchInviteLink, usePayment } from "@/lib/member";
 
 /** A receipt for one payment. The status comes from the backend and is polled while the link is open. */
 export function PaymentStatus() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const { data: payment, error, isPending } = usePayment(id);
+  const communityId = searchParams.get("communityId") || payment?.community_id || undefined;
+  const [joining, setJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   if (isPending) return <LoadingRow label="Loading payment…" />;
   if (error || !payment) {
@@ -28,6 +33,20 @@ export function PaymentStatus() {
 
   const amount = formatRupees(payment.amount_paise, "paise");
   const open = payment.status === "created";
+
+  async function joinGroup() {
+    if (!communityId) return;
+    setJoining(true);
+    setJoinError(null);
+    try {
+      const { invite_link } = await fetchInviteLink(communityId);
+      window.open(invite_link, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setJoinError(errorText(err));
+    } finally {
+      setJoining(false);
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
@@ -77,17 +96,52 @@ export function PaymentStatus() {
           )}
 
           {payment.status === "paid" && (
-            <Alert tone="success" title="Payment received.">
-              Your subscription appears under{" "}
-              <Link href="/m/subscriptions" className="font-medium text-accent underline underline-offset-4">
-                My subscriptions
-              </Link>
-              .
-            </Alert>
+            <div className="flex flex-col gap-4">
+              <Alert tone="success" title="Payment received.">
+                Your subscription is now active. Use the button below to join the Telegram group, or open{" "}
+                <Link href="/m/subscriptions" className="font-medium text-accent underline underline-offset-4">
+                  My subscriptions
+                </Link>{" "}
+                to access it later.
+              </Alert>
+              {joinError && <Alert tone="danger" title={joinError} />}
+              {communityId ? (
+                <>
+                  <Button
+                    id="join-telegram-group-btn"
+                    size="lg"
+                    className="w-full"
+                    loading={joining}
+                    onClick={joinGroup}
+                    aria-label="Join the Telegram group"
+                  >
+                    Join Telegram group
+                  </Button>
+                  <p className="text-center text-sm text-ink-muted">
+                    The bot also sent you a join button in Telegram.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  The bot sent you a join button in Telegram. Check your DMs. Your subscription also appears under{" "}
+                  <Link href="/m/subscriptions" className="text-accent underline underline-offset-4">
+                    My subscriptions
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
           )}
 
           {(payment.status === "expired" || payment.status === "cancelled") && (
-            <Alert tone="warning" title={payment.status === "expired" ? "This payment link expired." : "This payment was cancelled."}>
+            <Alert
+              tone="warning"
+              title={
+                payment.status === "expired"
+                  ? "This payment link expired."
+                  : "This payment was cancelled."
+              }
+            >
               You were not charged for this link. Go back to the community page and choose the plan again to get a new
               link.
             </Alert>

@@ -43,7 +43,7 @@ describe("ConnectionPanel", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ok({ status: "NOT_CONNECTED" })));
     renderPanel();
 
-    expect(await screen.findByText("@PulseAccessBot")).toBeInTheDocument();
+    expect((await screen.findAllByText("@PulseAccessBot")).length).toBeGreaterThan(0);
   });
 
   it("falls back to a generic bot name when the username isn't configured", async () => {
