@@ -72,6 +72,13 @@ class Community(Base):
         nullable=True,
         default=None,
     )
+    # Shared join-request link: anyone can ask to join, the bot approves
+    # only members with an active plan in this community.
+    telegram_join_link: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        default=None,
+    )
 
     __table_args__ = (
         UniqueConstraint("creator_id", "name", name="uq_communities_creator_name"),

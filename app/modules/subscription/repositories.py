@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Sequence
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.subscription.enums import SubscriptionStatus
@@ -95,3 +95,17 @@ class SubscriptionRepository:
         subscription.updated_at = datetime.now(timezone.utc)
         await self._session.flush()
         return subscription
+
+    async def expire_due(self, now: datetime) -> int:
+        """Mark every ACTIVE subscription whose end time has passed as EXPIRED."""
+        stmt = (
+            update(Subscription)
+            .where(
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+                Subscription.ends_at <= now,
+            )
+            .values(status=SubscriptionStatus.EXPIRED.value, updated_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        result = await self._session.execute(stmt)
+        return result.rowcount or 0

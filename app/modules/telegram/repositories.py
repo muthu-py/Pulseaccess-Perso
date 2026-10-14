@@ -15,15 +15,17 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.community.models import Community
-from app.modules.member.models import Member
+from app.modules.member.enums import MembershipStatus
+from app.modules.member.models import CommunityMember, Member
+from app.modules.plan.models import Plan
+from app.modules.subscription.enums import SubscriptionStatus
+from app.modules.subscription.models import Subscription
 from app.modules.telegram.enums import (
     TelegramConnectionStatus,
     TelegramOperationStatus,
     TelegramOperationType,
 )
 from app.modules.telegram.models import TelegramOperation, TelegramProcessedUpdate
-from app.modules.telegram_connect.enums import OwnerType
-from app.modules.telegram_connect.models import TelegramAccount
 from app.modules.telegram_connect.enums import OwnerType
 from app.modules.telegram_connect.models import TelegramAccount
 
@@ -91,6 +93,7 @@ class TelegramRepository:
                 telegram_chat_id=None,
                 telegram_connection_status=TelegramConnectionStatus.DISCONNECTED.value,
                 telegram_connected_at=None,
+                telegram_join_link=None,
             )
         )
         await self._session.execute(stmt)
@@ -110,9 +113,22 @@ class TelegramRepository:
         community = await self.get_community_by_chat_id(old_chat_id)
         if community is None:
             return None
-        await self.save_chat_id(community.id, new_chat_id)
+        # Links belong to the old chat; a new one is made on next use.
+        await self._session.execute(
+            update(Community)
+            .where(Community.id == community.id)
+            .values(telegram_chat_id=new_chat_id, telegram_join_link=None)
+        )
         community.telegram_chat_id = new_chat_id
+        community.telegram_join_link = None
         return community
+
+    async def save_join_link(self, community_id: uuid.UUID, link: str | None) -> None:
+        await self._session.execute(
+            update(Community)
+            .where(Community.id == community_id)
+            .values(telegram_join_link=link)
+        )
 
     # ── Creator lookup ───────────────────────────────────────────────
 
@@ -175,6 +191,96 @@ class TelegramRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    # ── Access: subscriptions and group membership ───────────────────
+
+    async def has_active_subscription_in_community(
+        self,
+        member_id: uuid.UUID,
+        community_id: uuid.UUID,
+    ) -> bool:
+        """True if any of the member's plans in this community is active right now."""
+        now = datetime.now(timezone.utc)
+        stmt = (
+            select(Subscription.id)
+            .join(Plan, Plan.id == Subscription.plan_id)
+            .where(
+                Subscription.member_id == member_id,
+                Plan.community_id == community_id,
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+                Subscription.ends_at > now,
+            )
+            .limit(1)
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def get_plan_community_id(self, plan_id: uuid.UUID) -> uuid.UUID | None:
+        result = await self._session.execute(
+            select(Plan.community_id).where(Plan.id == plan_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_membership(
+        self,
+        member_id: uuid.UUID,
+        community_id: uuid.UUID,
+    ) -> CommunityMember | None:
+        stmt = select(CommunityMember).where(
+            CommunityMember.member_id == member_id,
+            CommunityMember.community_id == community_id,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def set_membership_status(
+        self,
+        member_id: uuid.UUID,
+        community_id: uuid.UUID,
+        status: MembershipStatus,
+    ) -> CommunityMember:
+        """Create or update the member's row for this community."""
+        now = datetime.now(timezone.utc)
+        membership = await self.get_membership(member_id, community_id)
+        if membership is None:
+            membership = CommunityMember(member_id=member_id, community_id=community_id)
+            self._session.add(membership)
+        membership.status = status.value
+        if status == MembershipStatus.JOINED:
+            membership.group_joined_at = now
+        elif status in (MembershipStatus.LEFT, MembershipStatus.REMOVED):
+            membership.group_left_at = now
+        await self._session.flush()
+        return membership
+
+    async def find_ended_unhandled_subscriptions(
+        self,
+        limit: int = 200,
+    ) -> Sequence[tuple[Subscription, uuid.UUID]]:
+        """Expired / cancelled subscriptions the expiry job hasn't handled yet,
+        each with its plan's community id."""
+        stmt = (
+            select(Subscription, Plan.community_id)
+            .join(Plan, Plan.id == Subscription.plan_id)
+            .where(
+                Subscription.status.in_([
+                    SubscriptionStatus.EXPIRED.value,
+                    SubscriptionStatus.CANCELLED.value,
+                ]),
+                Subscription.access_revoked_at.is_(None),
+            )
+            .order_by(Subscription.ends_at.asc())
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [(row[0], row[1]) for row in result.all()]
+
+    async def mark_access_handled(self, subscription_id: uuid.UUID) -> None:
+        await self._session.execute(
+            update(Subscription)
+            .where(Subscription.id == subscription_id)
+            .values(access_revoked_at=datetime.now(timezone.utc))
+        )
 
     # ── Operation queue ──────────────────────────────────────────────
 

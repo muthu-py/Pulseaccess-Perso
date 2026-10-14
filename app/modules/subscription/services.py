@@ -94,3 +94,7 @@ class SubscriptionService:
             status=SubscriptionStatus.CANCELLED,
             cancelled_at=now,
         )
+
+    async def expire_due(self) -> int:
+        """Mark subscriptions past their end time as EXPIRED; returns how many."""
+        return await self._repo.expire_due(datetime.now(timezone.utc))

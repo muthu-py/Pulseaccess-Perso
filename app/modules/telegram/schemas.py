@@ -29,7 +29,7 @@ class TelegramConnectionStatusResponse(BaseModel):
 # ======================================================================
 
 class InviteResponse(BaseModel):
-    """Temporary Telegram invite link."""
+    """The community's join-request link (no expiry; the bot checks each request)."""
     invite_link: str
     expires_at: datetime | None = None
 
@@ -46,6 +46,7 @@ class TelegramWebhookPayload(BaseModel):
     message: dict | None = None
     my_chat_member: dict | None = None
     chat_member: dict | None = None
+    chat_join_request: dict | None = None
 
 
 # ======================================================================

@@ -48,6 +48,13 @@ class Subscription(Base):
         nullable=True,
         default=None,
     )
+    # Set once the expiry job has dealt with this ended subscription
+    # (member removed from the group, or kept because another plan covers them).
+    access_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

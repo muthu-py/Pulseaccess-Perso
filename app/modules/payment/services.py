@@ -29,6 +29,7 @@ from app.modules.payment.models import PaymentOrder
 from app.modules.payment.repositories import PaymentRepository
 from app.modules.subscription.services import SubscriptionService
 from app.modules.telegram.enums import TelegramConnectionStatus
+from app.modules.telegram.services import TelegramService
 
 logger = get_logger(__name__)
 
@@ -49,11 +50,14 @@ class PaymentService:
         razorpay_client: RazorpayClient,
         settings: Settings,
         subscription_service: SubscriptionService | None = None,
+        telegram_service: TelegramService | None = None,
     ) -> None:
         self._repo = repository
         self._razorpay = razorpay_client
         self._settings = settings
         self._subscription_service = subscription_service
+        # Records the membership and DMs the member a "Join group" button.
+        self._telegram_service = telegram_service
 
     # ══════════════════════════════════════════════════════════════════
     #  Member: buy a plan
@@ -345,3 +349,7 @@ class PaymentService:
             "Activated subscription for member %s, plan %s (%d days)",
             order.member_id, order.plan_id, duration_days,
         )
+        if self._telegram_service is not None:
+            await self._telegram_service.grant_access_after_payment(
+                order.member_id, order.plan_id,
+            )

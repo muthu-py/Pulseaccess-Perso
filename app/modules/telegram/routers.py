@@ -89,11 +89,13 @@ async def disconnect_community(
 @router.post(
     "/api/v1/telegram/communities/{community_id}/invite",
     response_model=BaseSuccessResponse[InviteResponse],
-    summary="Generate Telegram Invite",
+    summary="Get the group join link",
     description=(
-        "Creates a temporary Telegram invite link for the authenticated member. "
-        "Requires an active subscription and a linked Telegram account. "
-        "Requires a valid Bearer access token."
+        "Returns the community's Telegram join link for the logged-in member. "
+        "Requires a connected Telegram account and an active plan in this "
+        "community. Tapping the link sends a join request, which the bot "
+        "approves only for members with an active plan, so the link is safe "
+        "to share."
     ),
 )
 async def generate_invite(
@@ -101,7 +103,7 @@ async def generate_invite(
     member_id: uuid.UUID = Depends(get_current_member),
     service: TelegramService = Depends(get_telegram_service),
 ) -> BaseSuccessResponse[InviteResponse]:
-    """Generate a Telegram invite for an eligible member."""
+    """Join link for a member with an active plan in this community."""
     result = await service.generate_invite(community_id, member_id)
     return BaseSuccessResponse(data=result)
 
@@ -171,6 +173,9 @@ async def telegram_webhook(
         elif "chat_member" in body:
             logger.debug("Webhook update %s: chat_member", update_id)
             await service.process_webhook_chat_member(body)
+        elif "chat_join_request" in body:
+            logger.debug("Webhook update %s: chat_join_request", update_id)
+            await service.process_webhook_join_request(body)
         else:
             # Unsupported update type — log at DEBUG and ignore (Doc 07 §12)
             logger.debug("Webhook update %s: unsupported type, ignoring", update_id)

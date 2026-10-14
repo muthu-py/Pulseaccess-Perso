@@ -17,6 +17,10 @@ GET_CHAT_MEMBER = "getChatMember"
 # Invite links
 CREATE_CHAT_INVITE_LINK = "createChatInviteLink"
 
+# Join requests
+APPROVE_CHAT_JOIN_REQUEST = "approveChatJoinRequest"
+DECLINE_CHAT_JOIN_REQUEST = "declineChatJoinRequest"
+
 # Membership management
 BAN_CHAT_MEMBER = "banChatMember"
 UNBAN_CHAT_MEMBER = "unbanChatMember"
