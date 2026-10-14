@@ -916,210 +916,14 @@
         }
       }
     },
-    "/api/v1/subscriptions": {
-      "post": {
-        "tags": [
-          "subscriptions"
-        ],
-        "summary": "Create or activate subscription",
-        "description": "Create a new subscription or renew an existing one.",
-        "operationId": "create_subscription_api_v1_subscriptions_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateSubscriptionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionResponse_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subscriptions/{id}": {
+    "/api/v1/subscriptions/me": {
       "get": {
         "tags": [
           "subscriptions"
         ],
-        "summary": "Get subscription by ID",
-        "description": "Fetch details of a single subscription.",
-        "operationId": "get_subscription_api_v1_subscriptions__id__get",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionResponse_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subscriptions/{id}/extend": {
-      "post": {
-        "tags": [
-          "subscriptions"
-        ],
-        "summary": "Extend subscription duration",
-        "description": "Extend the duration of an active subscription.",
-        "operationId": "extend_subscription_api_v1_subscriptions__id__extend_post",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ExtendSubscriptionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionResponse_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subscriptions/{id}/cancel": {
-      "post": {
-        "tags": [
-          "subscriptions"
-        ],
-        "summary": "Cancel a subscription",
-        "description": "Cancel an active subscription.",
-        "operationId": "cancel_subscription_api_v1_subscriptions__id__cancel_post",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionResponse_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/subscriptions/member/{member_id}": {
-      "get": {
-        "tags": [
-          "subscriptions"
-        ],
-        "summary": "Get all subscriptions for a member",
-        "description": "List all historical and active subscriptions for a member.",
-        "operationId": "get_member_subscriptions_api_v1_subscriptions_member__member_id__get",
-        "parameters": [
-          {
-            "name": "member_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "title": "Member Id"
-            }
-          }
-        ],
+        "summary": "My subscriptions",
+        "description": "All of the logged-in member's subscriptions, newest first.",
+        "operationId": "get_my_subscriptions_api_v1_subscriptions_me_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1127,6 +931,50 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionListResponse_"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/subscriptions/{id}": {
+      "get": {
+        "tags": [
+          "subscriptions"
+        ],
+        "summary": "Get one of my subscriptions",
+        "description": "A single subscription, only if it belongs to the logged-in member.",
+        "operationId": "get_subscription_api_v1_subscriptions__id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BaseSuccessResponse_SubscriptionResponse_"
                 }
               }
             }
@@ -1637,8 +1485,8 @@
         "tags": [
           "telegram"
         ],
-        "summary": "Generate Telegram Invite",
-        "description": "Creates a temporary Telegram invite link for the authenticated member. Requires an active subscription and a linked Telegram account. Requires a valid Bearer access token.",
+        "summary": "Get the group join link",
+        "description": "Returns the community's Telegram join link for the logged-in member. Requires a connected Telegram account and an active plan in this community. Tapping the link sends a join request, which the bot approves only for members with an active plan, so the link is safe to share.",
         "operationId": "generate_invite_api_v1_telegram_communities__community_id__invite_post",
         "security": [
           {
@@ -2409,33 +2257,6 @@
         ],
         "title": "CreatePlanRequest"
       },
-      "CreateSubscriptionRequest": {
-        "properties": {
-          "member_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Member Id"
-          },
-          "plan_id": {
-            "type": "string",
-            "format": "uuid",
-            "title": "Plan Id"
-          },
-          "duration_days": {
-            "type": "integer",
-            "exclusiveMinimum": 0.0,
-            "title": "Duration Days",
-            "default": 30
-          }
-        },
-        "type": "object",
-        "required": [
-          "member_id",
-          "plan_id"
-        ],
-        "title": "CreateSubscriptionRequest",
-        "description": "Request payload to create or activate a subscription."
-      },
       "CreatorResponse": {
         "properties": {
           "id": {
@@ -2506,22 +2327,6 @@
         ],
         "title": "DashboardStatsResponse"
       },
-      "ExtendSubscriptionRequest": {
-        "properties": {
-          "days": {
-            "type": "integer",
-            "exclusiveMinimum": 0.0,
-            "title": "Days",
-            "description": "Number of days to extend subscription"
-          }
-        },
-        "type": "object",
-        "required": [
-          "days"
-        ],
-        "title": "ExtendSubscriptionRequest",
-        "description": "Request payload to extend an active subscription."
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2559,7 +2364,7 @@
           "invite_link"
         ],
         "title": "InviteResponse",
-        "description": "Temporary Telegram invite link."
+        "description": "The community's join-request link (no expiry; the bot checks each request)."
       },
       "LogoutResponse": {
         "properties": {

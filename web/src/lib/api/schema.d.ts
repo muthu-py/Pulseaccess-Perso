@@ -363,20 +363,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/subscriptions": {
+    "/api/v1/subscriptions/me": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Create or activate subscription
-         * @description Create a new subscription or renew an existing one.
+         * My subscriptions
+         * @description All of the logged-in member's subscriptions, newest first.
          */
-        post: operations["create_subscription_api_v1_subscriptions_post"];
+        get: operations["get_my_subscriptions_api_v1_subscriptions_me_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -391,70 +391,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get subscription by ID
-         * @description Fetch details of a single subscription.
+         * Get one of my subscriptions
+         * @description A single subscription, only if it belongs to the logged-in member.
          */
         get: operations["get_subscription_api_v1_subscriptions__id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/subscriptions/{id}/extend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Extend subscription duration
-         * @description Extend the duration of an active subscription.
-         */
-        post: operations["extend_subscription_api_v1_subscriptions__id__extend_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/subscriptions/{id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel a subscription
-         * @description Cancel an active subscription.
-         */
-        post: operations["cancel_subscription_api_v1_subscriptions__id__cancel_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/subscriptions/member/{member_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get all subscriptions for a member
-         * @description List all historical and active subscriptions for a member.
-         */
-        get: operations["get_member_subscriptions_api_v1_subscriptions_member__member_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -695,8 +635,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate Telegram Invite
-         * @description Creates a temporary Telegram invite link for the authenticated member. Requires an active subscription and a linked Telegram account. Requires a valid Bearer access token.
+         * Get the group join link
+         * @description Returns the community's Telegram join link for the logged-in member. Requires a connected Telegram account and an active plan in this community. Tapping the link sends a join request, which the bot approves only for members with an active plan, so the link is safe to share.
          */
         post: operations["generate_invite_api_v1_telegram_communities__community_id__invite_post"];
         delete?: never;
@@ -1072,27 +1012,6 @@ export interface components {
             duration_days: number;
         };
         /**
-         * CreateSubscriptionRequest
-         * @description Request payload to create or activate a subscription.
-         */
-        CreateSubscriptionRequest: {
-            /**
-             * Member Id
-             * Format: uuid
-             */
-            member_id: string;
-            /**
-             * Plan Id
-             * Format: uuid
-             */
-            plan_id: string;
-            /**
-             * Duration Days
-             * @default 30
-             */
-            duration_days: number;
-        };
-        /**
          * CreatorResponse
          * @description Public representation of a Creator.
          */
@@ -1125,17 +1044,6 @@ export interface components {
             /** Active Subscriptions */
             active_subscriptions: number;
         };
-        /**
-         * ExtendSubscriptionRequest
-         * @description Request payload to extend an active subscription.
-         */
-        ExtendSubscriptionRequest: {
-            /**
-             * Days
-             * @description Number of days to extend subscription
-             */
-            days: number;
-        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1143,7 +1051,7 @@ export interface components {
         };
         /**
          * InviteResponse
-         * @description Temporary Telegram invite link.
+         * @description The community's join-request link (no expiry; the bot checks each request).
          */
         InviteResponse: {
             /** Invite Link */
@@ -2130,35 +2038,22 @@ export interface operations {
             };
         };
     };
-    create_subscription_api_v1_subscriptions_post: {
+    get_my_subscriptions_api_v1_subscriptions_me_get: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSubscriptionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionListResponse_"];
                 };
             };
         };
@@ -2181,103 +2076,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    extend_subscription_api_v1_subscriptions__id__extend_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ExtendSubscriptionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cancel_subscription_api_v1_subscriptions__id__cancel_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionResponse_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_member_subscriptions_api_v1_subscriptions_member__member_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                member_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BaseSuccessResponse_SubscriptionListResponse_"];
                 };
             };
             /** @description Validation Error */

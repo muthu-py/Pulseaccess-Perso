@@ -7,6 +7,8 @@ const MESSAGES: Record<string, string> = {
   OTP_ATTEMPT_LIMIT_EXCEEDED: "Too many wrong attempts. Request a new code.",
   INACTIVE_CREATOR: "This account is inactive. Contact support to reactivate it.",
   CREATOR_ALREADY_EXISTS: "An account with this email, username or phone already exists. Try logging in.",
+  MEMBER_ALREADY_EXISTS: "An account with this email or phone already exists. Try logging in.",
+  INACTIVE_MEMBER: "This account is inactive. Contact support to reactivate it.",
   HTTP_429: "Too many requests. Wait a few minutes and try again.",
   NETWORK_ERROR: "Can't reach the server. Check your connection and try again.",
 };

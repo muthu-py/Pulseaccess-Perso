@@ -150,21 +150,21 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
   - NEEDS_ATTENTION: what to fix (admin rights, or re-add the bot).
 - Bot username: from config/env (`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`).
 
-### ✅ Step 6: Plans (done, not committed)
+### ✅ Step 6: Plans (done, committed)
 
 - On the community page: plans table (name, price, duration, active), create
   and edit forms (price in rupees with `₹` prefix, duration in days),
   activate/deactivate. Disabled with an explanation until the community is
   CONNECTED.
 
-### Step 7: Member flow
+### ✅ Step 7: Member flow (done, not committed)
 
 - `/m/signup`, `/m/login` (email OTP), `/m/connect-telegram` (phone must match).
 - `/c/[communityId]`: available plans (member login required for now) →
   "Pay" → `POST /plans/{id}/payment-link` → open Razorpay link →
   `/m/payments/[id]` polls until `paid` / `expired` / `cancelled`.
-- `/m/subscriptions` using `/members/me` → `/subscriptions/member/{id}`
-  (works today, but that endpoint needs auth added on the backend).
+- `/m/subscriptions` uses `GET /subscriptions/me` (the old unauthenticated
+  `/subscriptions/member/{id}` is gone; `openapi.json` was regenerated).
 - Member 401 → back to `/m/login` (no refresh yet).
 
 ### Step 8: Public site
