@@ -344,3 +344,61 @@ async def test_bad_signature_rejected(async_client: AsyncClient):
         headers={"Content-Type": "application/json", "X-Razorpay-Signature": "forged"},
     )
     assert resp.status_code == 400
+
+
+def _captured_and_order_paid(payment: dict, amount: int) -> tuple[dict, dict]:
+    """The two events Razorpay sends for a link payment (shape seen in test mode)."""
+    notes = {"payment_id": payment["id"], "plan_id": payment["plan_id"]}
+    pay = {"id": "pay_real_shape", "order_id": "order_internal_1", "status": "captured",
+           "amount": amount, "currency": "INR", "notes": notes,
+           "description": "#" + payment["payment_link_url"].rsplit("_", 1)[1]}
+    captured = {"event": "payment.captured", "payload": {"payment": {"entity": pay}}}
+    order_paid = {"event": "order.paid", "payload": {
+        "payment": {"entity": pay},
+        "order": {"entity": {"id": "order_internal_1", "status": "paid", "amount": amount,
+                             "amount_paid": amount, "currency": "INR",
+                             "receipt": payment["id"], "notes": notes}},
+    }}
+    return captured, order_paid
+
+
+async def test_link_payment_activates_without_payment_link_paid_event(
+    async_client: AsyncClient, db_session: AsyncSession, setup
+):
+    """Webhook subscribed only to payment.captured / order.paid still activates, once."""
+    payment = (await _buy(async_client, setup["plan"].id, setup["headers"])).json()["data"]
+    captured, order_paid = _captured_and_order_paid(payment, 49900)
+
+    await _webhook(async_client, captured)
+    await _webhook(async_client, order_paid)
+
+    resp = await async_client.get(f"/api/v1/payments/{payment['id']}", headers=setup["headers"])
+    assert resp.json()["data"]["status"] == "paid"
+    sub = await _subscription(db_session, setup["member"].id, setup["plan"].id)
+    assert sub is not None and sub.status == "active"
+    assert abs((sub.ends_at - sub.starts_at) - timedelta(days=30)) < timedelta(seconds=5)
+
+
+async def test_order_paid_alone_matches_by_receipt(
+    async_client: AsyncClient, db_session: AsyncSession, setup
+):
+    payment = (await _buy(async_client, setup["plan"].id, setup["headers"])).json()["data"]
+    _, order_paid = _captured_and_order_paid(payment, 49900)
+    order_paid["payload"]["payment"]["entity"]["notes"] = {}
+    order_paid["payload"]["order"]["entity"]["notes"] = {}
+
+    await _webhook(async_client, order_paid)
+
+    assert await _subscription(db_session, setup["member"].id, setup["plan"].id) is not None
+
+
+async def test_captured_with_wrong_amount_does_not_activate(
+    async_client: AsyncClient, db_session: AsyncSession, setup
+):
+    payment = (await _buy(async_client, setup["plan"].id, setup["headers"])).json()["data"]
+    captured, _ = _captured_and_order_paid(payment, 100)
+
+    result = await _webhook(async_client, captured)
+
+    assert result["status"] == "rejected"
+    assert await _subscription(db_session, setup["member"].id, setup["plan"].id) is None

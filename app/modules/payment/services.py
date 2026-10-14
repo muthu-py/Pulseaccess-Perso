@@ -230,24 +230,12 @@ class PaymentService:
         if order is None:
             logger.warning("payment_link.paid for unknown link %s", link_entity.get("id"))
             return PaymentEventStatus.IGNORED
-        if order.status == PaymentOrderStatus.PAID.value:
-            return PaymentEventStatus.ALREADY_PROCESSED
-
-        amount_paid = link_entity.get("amount_paid", payment_entity.get("amount"))
-        currency = link_entity.get("currency", payment_entity.get("currency"))
-        if amount_paid != order.amount_paise or currency != order.currency:
-            logger.error(
-                "Payment %s amount mismatch: expected %s %s, got %s %s — not activating",
-                order.id, order.amount_paise, order.currency, amount_paid, currency,
-            )
-            return PaymentEventStatus.FAILED
-
-        order.status = PaymentOrderStatus.PAID.value
-        order.paid_at = datetime.now(timezone.utc)
-        order.razorpay_payment_id = payment_entity.get("id")
-        await self._repo.save_order(order)
-        await self._activate_subscription(order)
-        return PaymentEventStatus.PROCESSED
+        return await self._mark_paid(
+            order,
+            amount=link_entity.get("amount_paid", payment_entity.get("amount")),
+            currency=link_entity.get("currency", payment_entity.get("currency")),
+            razorpay_payment_id=payment_entity.get("id"),
+        )
 
     async def _handle_link_closed(
         self,
@@ -270,17 +258,76 @@ class PaymentService:
         payment_entity: dict[str, Any],
         order_entity: dict[str, Any],
     ) -> PaymentEventStatus:
-        """Legacy Checkout orders (created before payment links)."""
+        """payment.captured / order.paid.
+
+        Payment-link payments also emit these (often without payment_link.paid
+        if that event isn't subscribed). Razorpay copies our link notes onto
+        the payment and order, and the order's receipt is our payment id, so
+        they are matched to our row. Legacy Checkout orders match by order id.
+        """
+        order = await self._find_link_payment(payment_entity, order_entity)
+        if order is not None:
+            return await self._mark_paid(
+                order,
+                amount=order_entity.get("amount_paid", payment_entity.get("amount")),
+                currency=order_entity.get("currency", payment_entity.get("currency")),
+                razorpay_payment_id=payment_entity.get("id"),
+            )
+
         razorpay_order_id = payment_entity.get("order_id") or order_entity.get("id")
         if not razorpay_order_id:
             return PaymentEventStatus.IGNORED
         order = await self._repo.get_order_by_razorpay_id(razorpay_order_id)
         if order is None or order.status == PaymentOrderStatus.PAID.value:
-            # Payment-link payments also emit payment.captured; the link's
-            # own event handles those.
             return PaymentEventStatus.IGNORED
 
         await self._repo.update_order_status(order, PaymentOrderStatus.PAID)
+        await self._activate_subscription(order)
+        return PaymentEventStatus.PROCESSED
+
+    async def _find_link_payment(
+        self,
+        payment_entity: dict[str, Any],
+        order_entity: dict[str, Any],
+    ) -> PaymentOrder | None:
+        candidates = (
+            (payment_entity.get("notes") or {}).get("payment_id"),
+            (order_entity.get("notes") or {}).get("payment_id"),
+            order_entity.get("receipt"),
+        )
+        for raw in candidates:
+            try:
+                payment_id = uuid.UUID(str(raw))
+            except ValueError:
+                continue
+            order = await self._repo.get_order_by_id(payment_id)
+            if order is not None and order.razorpay_payment_link_id is not None:
+                return order
+        return None
+
+    async def _mark_paid(
+        self,
+        order: PaymentOrder,
+        *,
+        amount: Any,
+        currency: Any,
+        razorpay_payment_id: str | None,
+    ) -> PaymentEventStatus:
+        """Mark a payment-link purchase paid and activate its subscription, once."""
+        if order.status == PaymentOrderStatus.PAID.value:
+            return PaymentEventStatus.ALREADY_PROCESSED
+
+        if amount != order.amount_paise or currency != order.currency:
+            logger.error(
+                "Payment %s amount mismatch: expected %s %s, got %s %s — not activating",
+                order.id, order.amount_paise, order.currency, amount, currency,
+            )
+            return PaymentEventStatus.FAILED
+
+        order.status = PaymentOrderStatus.PAID.value
+        order.paid_at = datetime.now(timezone.utc)
+        order.razorpay_payment_id = razorpay_payment_id
+        await self._repo.save_order(order)
         await self._activate_subscription(order)
         return PaymentEventStatus.PROCESSED
 
