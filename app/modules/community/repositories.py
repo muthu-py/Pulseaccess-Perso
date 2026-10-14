@@ -162,3 +162,23 @@ class CommunityRepository:
             stmt = stmt.where(Community.id != exclude_id)
         result = await self._session.execute(stmt)
         return result.scalar_one() > 0
+
+    async def has_pending_telegram(
+        self,
+        creator_id: uuid.UUID,
+        exclude_id: uuid.UUID | None = None,
+    ) -> bool:
+        """True if the creator has an active community not yet linked to a chat."""
+        stmt = (
+            select(func.count())
+            .select_from(Community)
+            .where(
+                Community.creator_id == creator_id,
+                Community.is_active.is_(True),
+                Community.telegram_chat_id.is_(None),
+            )
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(Community.id != exclude_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one() > 0

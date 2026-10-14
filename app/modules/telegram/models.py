@@ -1,13 +1,14 @@
 """Telegram module ORM models.
 
 Defines the telegram_operations table used as a persistent
-operation queue for asynchronous Telegram actions (Doc 03 §13).
+operation queue for asynchronous Telegram actions (Doc 03 §13),
+and telegram_processed_updates for webhook de-duplication.
 """
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -76,4 +77,17 @@ class TelegramOperation(Base):
         Index("ix_telegram_operations_scheduled_at", "scheduled_at"),
         Index("ix_telegram_operations_community_id", "community_id"),
         Index("ix_telegram_operations_member_id", "member_id"),
+    )
+
+
+class TelegramProcessedUpdate(Base):
+    """A webhook update_id already handled; Telegram may deliver an update twice."""
+
+    __tablename__ = "telegram_processed_updates"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )

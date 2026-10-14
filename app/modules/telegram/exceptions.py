@@ -65,12 +65,6 @@ class SubscriptionInactiveError(PulseAccessException):
 # Connection Code Exceptions
 # ======================================================================
 
-class InvalidConnectionCodeError(PulseAccessException):
-    status_code = 400
-    error_code = "INVALID_CONNECTION_CODE"
-    message = "The connection code is invalid or has expired."
-
-
 # ======================================================================
 # Telegram Operation Exceptions
 # ======================================================================

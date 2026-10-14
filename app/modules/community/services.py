@@ -19,6 +19,7 @@ from app.modules.community.exceptions import (
     CommunityNotFoundError,
     CommunityOwnershipError,
     DuplicateCommunityNameError,
+    PendingTelegramConnectionError,
 )
 from app.modules.community.models import Community
 from app.modules.community.repositories import CommunityRepository
@@ -54,6 +55,9 @@ class CommunityService:
 
         if await self._repo.exists_by_name(creator_id, clean_name):
             raise DuplicateCommunityNameError()
+
+        if await self._repo.has_pending_telegram(creator_id):
+            raise PendingTelegramConnectionError()
 
         community = Community(
             creator_id=creator_id,
@@ -176,6 +180,11 @@ class CommunityService:
         community = await self._repo.get_by_id(community_id, creator_id)
         if community is None:
             raise CommunityNotFoundError()
+
+        if community.telegram_chat_id is None and await self._repo.has_pending_telegram(
+            creator_id, exclude_id=community_id,
+        ):
+            raise PendingTelegramConnectionError()
 
         await self._repo.activate(community_id, creator_id)
 

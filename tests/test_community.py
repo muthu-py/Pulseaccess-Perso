@@ -2,10 +2,12 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_creator
 from app.main import app as fastapi_app
+from app.modules.community.models import Community
 from app.modules.community.repositories import CommunityRepository
 from app.modules.telegram_connect.enums import OwnerType
 from app.modules.telegram_connect.models import TelegramAccount
@@ -71,8 +73,19 @@ async def test_duplicate_name_rejected(client: AsyncClient):
     assert resp.status_code == 409
 
 
-async def test_duplicate_race_maps_integrity_error(client: AsyncClient, monkeypatch):
-    assert (await client.post(BASE, json={"name": "Racy"})).status_code == 201
+async def _link_to_chat(db_session: AsyncSession, community_id: str, chat_id: str) -> None:
+    await db_session.execute(
+        update(Community)
+        .where(Community.id == uuid.UUID(community_id))
+        .values(telegram_chat_id=chat_id)
+    )
+
+
+async def test_duplicate_race_maps_integrity_error(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch
+):
+    created = (await client.post(BASE, json={"name": "Racy"})).json()["data"]
+    await _link_to_chat(db_session, created["id"], "-1001")  # not pending
 
     # Simulate the race: the pre-check misses the concurrent insert
     async def never_exists(self, *args, **kwargs):
@@ -98,3 +111,31 @@ async def test_update_description_set_keep_and_clear(client: AsyncClient):
     # Explicit null → cleared
     resp = await client.patch(url, json={"name": "Renamed", "description": None})
     assert resp.json()["data"]["description"] is None
+
+
+async def test_only_one_community_may_wait_for_telegram(
+    client: AsyncClient, db_session: AsyncSession
+):
+    first = (await client.post(BASE, json={"name": "First"})).json()["data"]
+
+    resp = await client.post(BASE, json={"name": "Second"})
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "PENDING_TELEGRAM_CONNECTION"
+
+    await _link_to_chat(db_session, first["id"], "-1002")
+    assert (await client.post(BASE, json={"name": "Second"})).status_code == 201
+
+
+async def test_reactivating_second_pending_community_is_blocked(
+    client: AsyncClient, db_session: AsyncSession
+):
+    first = (await client.post(BASE, json={"name": "First"})).json()["data"]
+    await client.patch(f"{BASE}/{first['id']}/deactivate")
+
+    # Deactivated communities don't count as pending
+    second = (await client.post(BASE, json={"name": "Second"})).json()["data"]
+    assert second["name"] == "Second"
+
+    resp = await client.patch(f"{BASE}/{first['id']}/activate")
+    assert resp.status_code == 409
+    assert resp.json()["error_code"] == "PENDING_TELEGRAM_CONNECTION"

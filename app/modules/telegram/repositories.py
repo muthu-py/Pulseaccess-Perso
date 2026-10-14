@@ -21,7 +21,9 @@ from app.modules.telegram.enums import (
     TelegramOperationStatus,
     TelegramOperationType,
 )
-from app.modules.telegram.models import TelegramOperation
+from app.modules.telegram.models import TelegramOperation, TelegramProcessedUpdate
+from app.modules.telegram_connect.enums import OwnerType
+from app.modules.telegram_connect.models import TelegramAccount
 from app.modules.telegram_connect.enums import OwnerType
 from app.modules.telegram_connect.models import TelegramAccount
 
@@ -92,6 +94,58 @@ class TelegramRepository:
             )
         )
         await self._session.execute(stmt)
+
+    async def get_unlinked_communities(self, creator_id: uuid.UUID) -> Sequence[Community]:
+        """Active communities of this creator still waiting for a Telegram chat."""
+        stmt = select(Community).where(
+            Community.creator_id == creator_id,
+            Community.is_active.is_(True),
+            Community.telegram_chat_id.is_(None),
+        )
+        result = await self._session.execute(stmt)
+        return result.scalars().all()
+
+    async def replace_chat_id(self, old_chat_id: str, new_chat_id: str) -> Community | None:
+        """Point a community at a new chat id (group → supergroup migration)."""
+        community = await self.get_community_by_chat_id(old_chat_id)
+        if community is None:
+            return None
+        await self.save_chat_id(community.id, new_chat_id)
+        community.telegram_chat_id = new_chat_id
+        return community
+
+    # ── Creator lookup ───────────────────────────────────────────────
+
+    async def get_creator_id_by_telegram_user(self, telegram_user_id: str) -> uuid.UUID | None:
+        """Creator whose verified Telegram account has this user id."""
+        stmt = select(TelegramAccount.owner_id).where(
+            TelegramAccount.owner_type == OwnerType.CREATOR.value,
+            TelegramAccount.telegram_user_id == telegram_user_id,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_creator_telegram_user_id(self, creator_id: uuid.UUID) -> str | None:
+        stmt = select(TelegramAccount.telegram_user_id).where(
+            TelegramAccount.owner_type == OwnerType.CREATOR.value,
+            TelegramAccount.owner_id == creator_id,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    # ── Processed webhook updates ────────────────────────────────────
+
+    async def is_update_processed(self, update_id: int) -> bool:
+        result = await self._session.execute(
+            select(TelegramProcessedUpdate.update_id).where(
+                TelegramProcessedUpdate.update_id == update_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def record_update(self, update_id: int) -> None:
+        self._session.add(TelegramProcessedUpdate(update_id=update_id))
+        await self._session.flush()
 
     # ── Member queries ───────────────────────────────────────────────
 
