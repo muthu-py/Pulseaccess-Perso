@@ -4,7 +4,7 @@ Orchestrates repositories, infrastructure clients, and other services
 to implement the six primary workflows from Doc 05 §5:
   1. Community Connection
   2. Telegram Account Linking (moved to app.modules.telegram_connect)
-  3. Invite Generation
+  3. Group Access (join link, join requests, grant after payment)
   4. Access Revocation
   5. Synchronization
   6. Webhook Processing
@@ -16,7 +16,6 @@ directly — it delegates to TelegramRepository.
 
 from __future__ import annotations
 
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -30,6 +29,7 @@ from app.infrastructure.telegram.telegram_exceptions import (
 )
 from app.infrastructure.telegram.telegram_interface import TelegramClient
 from app.infrastructure.telegram.telegram_models import TelegramChatMember
+from app.modules.member.enums import MembershipStatus
 from app.modules.telegram import constants as tc
 from app.modules.telegram.enums import (
     TelegramConnectionStatus,
@@ -120,52 +120,171 @@ class TelegramService:
         community_id: uuid.UUID,
         member_id: uuid.UUID,
     ) -> InviteResponse:
-        """Generate a temporary Telegram invite for an eligible member."""
+        """The community's join-request link, for a member with an active plan.
+
+        The link is shared by the whole community: tapping it only *asks* to
+        join, and the bot approves the request only for members with an
+        active plan (see process_webhook_join_request).
+        """
         community = await self._repo.get_community_by_id(community_id)
-        if community is None:
+        if community is None or not community.is_active:
             raise CommunityNotFoundError()
 
         if community.telegram_connection_status != TelegramConnectionStatus.CONNECTED.value:
             raise CommunityNotConnectedError()
 
-        member = await self._repo.get_member_by_id(member_id)
-        if member is None:
-            raise CommunityNotFoundError("Member not found.")
-
         if await self._repo.get_member_telegram_id(member_id) is None:
             raise TelegramNotLinkedError()
 
-        # Note: Subscription validation would be performed here by calling
-        # SubscriptionService. For now we proceed assuming the caller
-        # (router) has verified subscription status via the JWT claims
-        # or a dependency.
+        if not await self._repo.has_active_subscription_in_community(member_id, community_id):
+            raise SubscriptionInactiveError()
 
-        expire_date = int(time.time()) + tc.INVITE_LINK_EXPIRE_SECONDS
+        link = await self._join_link(community)
+
+        membership = await self._repo.get_membership(member_id, community_id)
+        if membership is None or membership.status != MembershipStatus.JOINED.value:
+            await self._repo.set_membership_status(
+                member_id, community_id, MembershipStatus.PAID_NOT_JOINED,
+            )
+
+        return InviteResponse(invite_link=link, expires_at=None)
+
+    async def _join_link(self, community: Any) -> str:
+        """The community's join-request link, created on first use."""
+        if community.telegram_join_link:
+            return community.telegram_join_link
         try:
             invite = await self._telegram.create_invite_link(
                 chat_id=community.telegram_chat_id,
-                expire_date=expire_date,
-                member_limit=tc.INVITE_LINK_MEMBER_LIMIT,
+                creates_join_request=True,
+                name=tc.JOIN_LINK_NAME,
             )
         except TelegramException as exc:
             logger.error(
-                "Failed to create invite for community %s: %s",
-                community_id,
+                "Failed to create join link for community %s: %s",
+                community.id,
                 exc.message,
             )
             raise TelegramOperationFailedError() from exc
 
-        expires_at = datetime.fromtimestamp(expire_date, tz=timezone.utc)
+        await self._repo.save_join_link(community.id, invite.invite_link)
+        community.telegram_join_link = invite.invite_link
+        logger.info("Join link created for community %s", community.id)
+        return invite.invite_link
 
-        logger.info(
-            "Invite generated for member %s → community %s",
-            member_id,
-            community_id,
+    async def grant_access_after_payment(
+        self,
+        member_id: uuid.UUID,
+        plan_id: uuid.UUID,
+    ) -> None:
+        """After a paid plan: record the membership and DM the member the join button.
+
+        Best effort on the Telegram side: the payment stands even if the
+        message can't be sent (the site's "Join group" button still works).
+        """
+        community_id = await self._repo.get_plan_community_id(plan_id)
+        if community_id is None:
+            return
+        community = await self._repo.get_community_by_id(community_id)
+        if community is None:
+            return
+
+        telegram_user_id = await self._repo.get_member_telegram_id(member_id)
+        membership = await self._repo.get_membership(member_id, community_id)
+        if membership is not None and membership.status == MembershipStatus.JOINED.value:
+            if telegram_user_id:
+                await self._send_private(
+                    telegram_user_id, tc.MSG_PAID_ALREADY_IN.format(community=community.name),
+                )
+            return
+
+        await self._repo.set_membership_status(
+            member_id, community_id, MembershipStatus.PAID_NOT_JOINED,
         )
 
-        return InviteResponse(
-            invite_link=invite.invite_link,
-            expires_at=expires_at,
+        if (
+            not telegram_user_id
+            or not community.telegram_chat_id
+            or community.telegram_connection_status != TelegramConnectionStatus.CONNECTED.value
+        ):
+            return
+
+        # Already in the group (e.g. joined before PulseAccess tracked it)?
+        try:
+            chat_member = await self._telegram.get_chat_member(
+                community.telegram_chat_id, int(telegram_user_id),
+            )
+        except TelegramException:
+            chat_member = None
+        if chat_member is not None and chat_member.status in tc.MEMBER_PRESENT_STATUSES:
+            await self._repo.set_membership_status(
+                member_id, community_id, MembershipStatus.JOINED,
+            )
+            await self._send_private(
+                telegram_user_id, tc.MSG_PAID_ALREADY_IN.format(community=community.name),
+            )
+            return
+
+        try:
+            link = await self._join_link(community)
+        except TelegramOperationFailedError:
+            return
+        await self._send_private(
+            telegram_user_id,
+            tc.MSG_PAID_JOIN.format(community=community.name),
+            reply_markup={"inline_keyboard": [[{"text": tc.JOIN_BUTTON_TEXT, "url": link}]]},
+        )
+
+    async def process_webhook_join_request(self, update: dict) -> None:
+        """Someone tapped a join-request link: approve paying members, decline the rest."""
+        request = update.get("chat_join_request", {})
+        chat_id = str(request.get("chat", {}).get("id", ""))
+        user_id = request.get("from", {}).get("id")
+        if not user_id:
+            return
+
+        community = await self._repo.get_community_by_chat_id(chat_id)
+        if community is None:
+            # Not a PulseAccess group; leave the request for its admins.
+            return
+
+        member = await self._repo.find_member_by_telegram_id(str(user_id))
+        allowed = (
+            member is not None
+            and community.is_active
+            and await self._repo.has_active_subscription_in_community(member.id, community.id)
+        )
+
+        if allowed:
+            try:
+                await self._telegram.approve_join_request(chat_id, int(user_id))
+            except TelegramException as exc:
+                logger.error(
+                    "Approving join request of member %s in community %s failed: %s",
+                    member.id, community.id, exc.message,
+                )
+                return
+            await self._repo.set_membership_status(
+                member.id, community.id, MembershipStatus.JOINED,
+            )
+            logger.info("Member %s joined community %s", member.id, community.id)
+            return
+
+        try:
+            await self._telegram.decline_join_request(chat_id, int(user_id))
+        except TelegramException as exc:
+            logger.error(
+                "Declining join request in community %s failed: %s", community.id, exc.message,
+            )
+        logger.info(
+            "Declined join request for community %s (%s)",
+            community.id,
+            "member without an active plan" if member else "not a PulseAccess member",
+        )
+        # user_chat_id lets the bot DM the requester even if they never started it.
+        await self._send_private(
+            str(request.get("user_chat_id") or user_id),
+            tc.MSG_JOIN_DECLINED.format(community=community.name),
         )
 
     # ══════════════════════════════════════════════════════════════════
@@ -188,6 +307,40 @@ class TelegramService:
             member_id,
             community_id,
         )
+
+    async def revoke_ended_access(self) -> int:
+        """Handle each expired / cancelled subscription once.
+
+        The member is removed from the community's group unless another of
+        their plans there is still active. Returns how many removals were queued.
+        """
+        queued = 0
+        for subscription, community_id in await self._repo.find_ended_unhandled_subscriptions():
+            member_id = subscription.member_id
+            still_covered = await self._repo.has_active_subscription_in_community(
+                member_id, community_id,
+            )
+            membership = await self._repo.get_membership(member_id, community_id)
+            already_removed = (
+                membership is not None
+                and membership.status == MembershipStatus.REMOVED.value
+            )
+
+            if not still_covered and not already_removed:
+                community = await self._repo.get_community_by_id(community_id)
+                if (
+                    community is not None
+                    and community.telegram_chat_id
+                    and await self._repo.get_member_telegram_id(member_id)
+                ):
+                    await self.revoke_access(community_id, member_id)
+                    queued += 1
+                await self._repo.set_membership_status(
+                    member_id, community_id, MembershipStatus.REMOVED,
+                )
+
+            await self._repo.mark_access_handled(subscription.id)
+        return queued
 
     # ══════════════════════════════════════════════════════════════════
     #  Workflow 5 — Operation Execution (called by workers)
@@ -306,6 +459,8 @@ class TelegramService:
                 await self._repo.update_connection_status(
                     community.id, TelegramConnectionStatus.NEEDS_ATTENTION,
                 )
+                # Links the bot made may be revoked with it; make a fresh one later.
+                await self._repo.save_join_link(community.id, None)
                 logger.warning("Bot removed from chat %s → community %s", chat_id, community.id)
                 await self._notify_creator(
                     community.creator_id,
@@ -439,10 +594,17 @@ class TelegramService:
         if telegram_user_id:
             await self._send_private(telegram_user_id, text)
 
-    async def _send_private(self, telegram_user_id: str, text: str) -> None:
-        """Best effort: the connection result stands even if the message fails."""
+    async def _send_private(
+        self,
+        telegram_user_id: str,
+        text: str,
+        reply_markup: dict | None = None,
+    ) -> None:
+        """Best effort: the result stands even if the message fails."""
         try:
-            await self._telegram.send_message(int(telegram_user_id), text)
+            await self._telegram.send_message(
+                int(telegram_user_id), text, reply_markup=reply_markup,
+            )
         except (TelegramException, ValueError):
             logger.exception("Failed to message Telegram user %s", telegram_user_id)
 
@@ -455,16 +617,43 @@ class TelegramService:
         await self._repo.record_update(update_id)
 
     async def process_webhook_chat_member(self, update: dict) -> None:
-        """Handle member joined/left/kicked events."""
+        """Keep community_members in step when a member joins or leaves the group."""
         event = update.get("chat_member", {})
-        new_status = event.get("new_chat_member", {}).get("status", "")
-        user_id = str(event.get("new_chat_member", {}).get("user", {}).get("id", ""))
+        chat_id = str(event.get("chat", {}).get("id", ""))
+        new_member = event.get("new_chat_member", {})
+        new_status = new_member.get("status", "")
+        user_id = str(new_member.get("user", {}).get("id", ""))
 
-        if new_status in ("left", "kicked"):
-            member = await self._repo.find_member_by_telegram_id(user_id)
-            if member:
-                logger.info("Member %s left/was removed from Telegram group", member.id)
-                # Business decision: log only. Reconciliation worker will handle sync.
+        community = await self._repo.get_community_by_chat_id(chat_id)
+        if community is None:
+            return
+        member = await self._repo.find_member_by_telegram_id(user_id)
+        if member is None:
+            return
+
+        present = new_status in tc.MEMBER_PRESENT_STATUSES and new_member.get("is_member", True)
+        membership = await self._repo.get_membership(member.id, community.id)
+
+        if present:
+            if membership is None and not await self._repo.has_active_subscription_in_community(
+                member.id, community.id,
+            ):
+                return  # someone already in the group without a plan: leave them be
+            if membership is None or membership.status != MembershipStatus.JOINED.value:
+                await self._repo.set_membership_status(
+                    member.id, community.id, MembershipStatus.JOINED,
+                )
+            return
+
+        if membership is not None and membership.status in (
+            MembershipStatus.JOINED.value,
+            MembershipStatus.PAID_NOT_JOINED.value,
+        ):
+            # REMOVED stays REMOVED: our own ban/unban also arrives here.
+            await self._repo.set_membership_status(
+                member.id, community.id, MembershipStatus.LEFT,
+            )
+            logger.info("Member %s left community %s", member.id, community.id)
 
     # ══════════════════════════════════════════════════════════════════
     #  Health Check

@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.infrastructure.database.base import Base
 from app.infrastructure.database.session import get_db
+from app.infrastructure.telegram.telegram_stub import TelegramStub
 from app.main import app as fastapi_app
+from app.modules.telegram.dependencies import get_telegram_client
+from app.modules.telegram_connect.dependencies import (
+    get_telegram_client as get_connect_telegram_client,
+)
 
 # Ensure all models are imported so Base.metadata knows about them
 import app.modules.auth.models
@@ -46,6 +51,10 @@ async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
         yield db_session
 
     fastapi_app.dependency_overrides[get_db] = override_get_db
+    # Never reach the real bot from tests, even when .env has a token.
+    # Tests that need to inspect Telegram calls override these again.
+    fastapi_app.dependency_overrides[get_telegram_client] = TelegramStub
+    fastapi_app.dependency_overrides[get_connect_telegram_client] = TelegramStub
 
     transport = ASGITransport(app=fastapi_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

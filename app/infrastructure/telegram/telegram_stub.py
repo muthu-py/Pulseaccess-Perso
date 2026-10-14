@@ -21,6 +21,12 @@ class TelegramStub:
     def __init__(self) -> None:
         # Messages "sent" through the stub, kept so tests can inspect them.
         self.sent_messages: list[dict] = []
+        self.invite_links: list[dict] = []
+        self.approved: list[tuple[str, int]] = []
+        self.declined: list[tuple[str, int]] = []
+        self.banned: list[tuple[str, int]] = []
+        # user_id → status returned by get_chat_member ("member" when absent)
+        self.member_status: dict[int, str] = {}
 
     # ── Bot management ───────────────────────────────────────────────
 
@@ -64,7 +70,7 @@ class TelegramStub:
     ) -> TelegramChatMember:
         return TelegramChatMember(
             user=TelegramUser(id=user_id, first_name="StubUser"),
-            status="member",
+            status=self.member_status.get(user_id, "member"),
         )
 
     # ── Invite management ────────────────────────────────────────────
@@ -75,16 +81,37 @@ class TelegramStub:
         *,
         expire_date: int | None = None,
         member_limit: int | None = None,
+        creates_join_request: bool = False,
+        name: str | None = None,
     ) -> TelegramInviteLink:
+        self.invite_links.append({
+            "chat_id": chat_id,
+            "expire_date": expire_date,
+            "member_limit": member_limit,
+            "creates_join_request": creates_join_request,
+            "name": name,
+        })
         return TelegramInviteLink(
-            invite_link="https://t.me/joinchat/stub_invite_link",
+            invite_link=f"https://t.me/+stub_invite_link_{len(self.invite_links)}",
+            creates_join_request=creates_join_request,
             expire_date=expire_date,
             member_limit=member_limit,
         )
 
+    # ── Join requests ────────────────────────────────────────────────
+
+    async def approve_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        self.approved.append((str(chat_id), user_id))
+        return True
+
+    async def decline_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        self.declined.append((str(chat_id), user_id))
+        return True
+
     # ── Membership management ────────────────────────────────────────
 
     async def ban_member(self, chat_id: int | str, user_id: int) -> bool:
+        self.banned.append((str(chat_id), user_id))
         return True
 
     async def unban_member(self, chat_id: int | str, user_id: int) -> bool:

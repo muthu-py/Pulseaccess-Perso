@@ -12,6 +12,7 @@ from app.modules.subscription.exceptions import (
 )
 from app.modules.subscription.repositories import SubscriptionRepository
 from app.modules.subscription.services import SubscriptionService
+from tests.helpers import auth_headers, make_member
 
 
 @pytest.mark.asyncio
@@ -75,40 +76,44 @@ async def test_get_nonexistent_subscription_raises(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_subscription_api_flow(async_client: AsyncClient):
-    member_id = str(uuid.uuid4())
-    plan_id = str(uuid.uuid4())
+async def test_subscription_api_is_read_only_and_member_scoped(
+    async_client: AsyncClient, db_session: AsyncSession,
+):
+    owner = await make_member(db_session)
+    other = await make_member(db_session)
+    sub = await SubscriptionService(SubscriptionRepository(db_session)).activate_or_renew(
+        member_id=owner.id, plan_id=uuid.uuid4(), duration_days=30,
+    )
 
-    # 1. Create subscription via API
+    # Nobody can create, extend or cancel a subscription over the API:
+    # only a paid Razorpay webhook does that.
     res = await async_client.post(
         "/api/v1/subscriptions",
-        json={"member_id": member_id, "plan_id": plan_id, "duration_days": 30},
+        json={"member_id": str(owner.id), "plan_id": str(uuid.uuid4()), "duration_days": 30},
+        headers=auth_headers(owner.id, "member"),
     )
-    assert res.status_code == 201
-    data = res.json()["data"]
-    sub_id = data["id"]
-    assert data["status"] == "active"
-    assert data["member_id"] == member_id
+    assert res.status_code in (404, 405)
+    for path in (f"/api/v1/subscriptions/{sub.id}/extend", f"/api/v1/subscriptions/{sub.id}/cancel"):
+        res = await async_client.post(path, json={"days": 10}, headers=auth_headers(owner.id, "member"))
+        assert res.status_code in (404, 405)
 
-    # 2. Fetch subscription
-    res = await async_client.get(f"/api/v1/subscriptions/{sub_id}")
-    assert res.status_code == 200
-    assert res.json()["data"]["id"] == sub_id
+    # Login required
+    assert (await async_client.get("/api/v1/subscriptions/me")).status_code == 401
+    assert (await async_client.get(f"/api/v1/subscriptions/{sub.id}")).status_code == 401
 
-    # 3. Extend subscription
-    res = await async_client.post(
-        f"/api/v1/subscriptions/{sub_id}/extend",
-        json={"days": 10},
-    )
+    # The owner sees it
+    res = await async_client.get("/api/v1/subscriptions/me", headers=auth_headers(owner.id, "member"))
     assert res.status_code == 200
-    assert res.json()["data"]["status"] == "active"
+    assert [s["id"] for s in res.json()["data"]["subscriptions"]] == [str(sub.id)]
+    res = await async_client.get(f"/api/v1/subscriptions/{sub.id}", headers=auth_headers(owner.id, "member"))
+    assert res.status_code == 200
 
-    # 4. List subscriptions for member
-    res = await async_client.get(f"/api/v1/subscriptions/member/{member_id}")
-    assert res.status_code == 200
-    assert res.json()["data"]["total"] >= 1
+    # Another member doesn't
+    res = await async_client.get("/api/v1/subscriptions/me", headers=auth_headers(other.id, "member"))
+    assert res.json()["data"]["total"] == 0
+    res = await async_client.get(f"/api/v1/subscriptions/{sub.id}", headers=auth_headers(other.id, "member"))
+    assert res.status_code == 404
 
-    # 5. Cancel subscription
-    res = await async_client.post(f"/api/v1/subscriptions/{sub_id}/cancel")
-    assert res.status_code == 200
-    assert res.json()["data"]["status"] == "cancelled"
+    # A creator token is not a member token
+    res = await async_client.get("/api/v1/subscriptions/me", headers=auth_headers(owner.id, "creator"))
+    assert res.status_code == 403

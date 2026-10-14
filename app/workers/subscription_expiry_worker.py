@@ -1,8 +1,10 @@
-"""Subscription Expiry Worker — queues member removal on subscription expiration.
+"""Subscription Expiry Worker — ends access when a plan runs out.
 
-Detects subscriptions that have expired (status EXPIRED or CANCELLED)
-where the member still has Telegram access, and queues a REMOVE_MEMBER
-operation for asynchronous execution (Doc 08 §8).
+Each cycle:
+  1. Marks ACTIVE subscriptions past their end time as EXPIRED.
+  2. Handles each expired / cancelled subscription once: queues a
+     REMOVE_MEMBER operation unless another of the member's plans in that
+     community is still active (Doc 08 §8).
 
 Workers MUST call services, NOT repositories or infrastructure directly.
 """
@@ -11,88 +13,49 @@ from __future__ import annotations
 
 import asyncio
 
-from sqlalchemy import select
-
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.session import SessionLocal
 from app.infrastructure.telegram.telegram_factory import build_telegram_client
-from app.modules.plan.models import Plan
-from app.modules.subscription.models import Subscription
-from app.modules.telegram.enums import TelegramConnectionStatus
+from app.modules.subscription.repositories import SubscriptionRepository
+from app.modules.subscription.services import SubscriptionService
 from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.services import TelegramService
 
 logger = get_logger(__name__)
 
-# Subscription statuses that indicate expiry / cancellation
-EXPIRED_STATUSES = {"expired", "cancelled", "EXPIRED", "CANCELLED"}
+INTERVAL_SECONDS = 300  # every 5 minutes
+
+
+async def run_expiry_cycle(session) -> tuple[int, int]:
+    """One pass; returns (subscriptions expired, removals queued)."""
+    settings = get_settings()
+    subscriptions = SubscriptionService(SubscriptionRepository(session))
+    telegram = TelegramService(
+        repository=TelegramRepository(session),
+        telegram_client=build_telegram_client(settings),
+        settings=settings,
+    )
+    expired = await subscriptions.expire_due()
+    queued = await telegram.revoke_ended_access()
+    return expired, queued
 
 
 async def run_subscription_expiry_worker() -> None:
-    """Queue Telegram member removals for expired subscriptions."""
-    settings = get_settings()
+    """Expire due subscriptions and queue group removals."""
     logger.info("Subscription expiry worker started")
 
     while True:
         try:
             async with SessionLocal() as session:
-                repo = TelegramRepository(session)
-
-                client = build_telegram_client(settings)
-
-                service = TelegramService(
-                    repository=repo,
-                    telegram_client=client,
-                    settings=settings,
-                )
-
-                # Find subscriptions with expired/cancelled status
-                stmt = (
-                    select(Subscription)
-                    .where(Subscription.status.in_(EXPIRED_STATUSES))
-                )
-                result = await session.execute(stmt)
-                expired_subs = result.scalars().all()
-
-                for sub in expired_subs:
-                    try:
-                        # Members connect one Telegram account for all communities
-                        if await repo.get_member_telegram_id(sub.member_id) is None:
-                            # No Telegram account linked — nothing to revoke
-                            continue
-
-                        # The plan decides which community this subscription is for
-                        plan = await session.get(Plan, sub.plan_id)
-                        if plan is None:
-                            continue
-                        community = await repo.get_community_by_id(plan.community_id)
-                        if community is None:
-                            continue
-
-                        # Only act on CONNECTED communities
-                        if community.telegram_connection_status != TelegramConnectionStatus.CONNECTED.value:
-                            continue
-
-                        # Queue the removal via service (not directly via repo)
-                        await service.revoke_access(
-                            community_id=community.id,
-                            member_id=sub.member_id,
-                        )
-                        logger.info(
-                            "Queued REMOVE_MEMBER for expired member %s in community %s",
-                            sub.member_id,
-                            community.id,
-                        )
-
-                    except Exception:
-                        logger.exception(
-                            "Expiry worker error for subscription %s", sub.id,
-                        )
-
+                expired, queued = await run_expiry_cycle(session)
                 await session.commit()
-
+            if expired or queued:
+                logger.info(
+                    "Expiry cycle: %d subscription(s) expired, %d removal(s) queued",
+                    expired, queued,
+                )
         except Exception:
             logger.exception("Subscription expiry worker cycle error")
 
-        await asyncio.sleep(300)  # Run every 5 minutes
+        await asyncio.sleep(INTERVAL_SECONDS)

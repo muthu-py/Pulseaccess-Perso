@@ -10,9 +10,6 @@ WEBHOOK_PATH = "/api/v1/webhooks/telegram"
 # Deep link prefix for Telegram account linking
 DEEP_LINK_PREFIX = "link_"
 
-# Invite link defaults
-INVITE_LINK_EXPIRE_SECONDS = 3600  # 1 hour
-INVITE_LINK_MEMBER_LIMIT = 1  # single-use whenever supported
 
 # Group connection (bot added to a creator's Telegram group/channel)
 GROUP_CHAT_TYPES = ("group", "supergroup", "channel")
@@ -35,4 +32,21 @@ MSG_GROUP_NO_PENDING = (
 MSG_GROUP_BOT_REMOVED = (
     "⚠️ I was removed from “{title}”. Your community “{community}” can't manage "
     "members until you add me back as an administrator."
+)
+
+# Members joining a community's group
+JOIN_LINK_NAME = "PulseAccess members"
+MEMBER_PRESENT_STATUSES = ("member", "administrator", "creator", "restricted")
+MEMBER_GONE_STATUSES = ("left", "kicked")
+JOIN_BUTTON_TEXT = "Join group"
+
+MSG_PAID_JOIN = (
+    "✅ Payment received for “{community}”.\n"
+    "Tap the button below, then “Request to join”. I'll let you in right away."
+)
+MSG_PAID_ALREADY_IN = "✅ Payment received. Your access to “{community}” has been extended."
+MSG_JOIN_DECLINED = (
+    "I couldn't let you into “{community}” because this Telegram account has no "
+    "active plan for it. Buy or renew a plan on the PulseAccess site, then tap the "
+    "join link again."
 )

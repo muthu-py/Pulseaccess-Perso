@@ -65,8 +65,24 @@ class TelegramClient(Protocol):
         *,
         expire_date: int | None = None,
         member_limit: int | None = None,
+        creates_join_request: bool = False,
+        name: str | None = None,
     ) -> TelegramInviteLink:
-        """Create a new invite link for a chat."""
+        """Create a new invite link for a chat.
+
+        With creates_join_request=True, tapping the link sends a join request
+        the bot must approve (member_limit can't be combined with it).
+        """
+        ...
+
+    # ── Join requests ────────────────────────────────────────────────
+
+    async def approve_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        """Approve a pending chat join request."""
+        ...
+
+    async def decline_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        """Decline a pending chat join request."""
         ...
 
     # ── Membership management ────────────────────────────────────────

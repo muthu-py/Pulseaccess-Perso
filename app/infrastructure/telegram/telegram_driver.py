@@ -154,14 +154,34 @@ class TelegramDriver:
         *,
         expire_date: int | None = None,
         member_limit: int | None = None,
+        creates_join_request: bool = False,
+        name: str | None = None,
     ) -> TelegramInviteLink:
         params: dict = {"chat_id": chat_id}
         if expire_date is not None:
             params["expire_date"] = expire_date
         if member_limit is not None:
             params["member_limit"] = member_limit
+        if creates_join_request:
+            params["creates_join_request"] = True
+        if name:
+            params["name"] = name[:32]
         result = await self._request(tc.CREATE_CHAT_INVITE_LINK, params)
         return TelegramMapper.to_invite_link(result)
+
+    # ── Join requests ────────────────────────────────────────────────
+
+    async def approve_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        await self._request(
+            tc.APPROVE_CHAT_JOIN_REQUEST, {"chat_id": chat_id, "user_id": user_id},
+        )
+        return True
+
+    async def decline_join_request(self, chat_id: int | str, user_id: int) -> bool:
+        await self._request(
+            tc.DECLINE_CHAT_JOIN_REQUEST, {"chat_id": chat_id, "user_id": user_id},
+        )
+        return True
 
     # ── Membership management ────────────────────────────────────────
 

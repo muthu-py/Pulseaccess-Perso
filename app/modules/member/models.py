@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
+from app.modules.member.enums import MembershipStatus
 
 
 class Member(Base):
@@ -53,11 +54,21 @@ class CommunityMember(Base):
         ForeignKey("communities.id", ondelete="CASCADE"),
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(String(20), default="JOINED", nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), default=MembershipStatus.PAID_NOT_JOINED.value, nullable=False,
+    )
+    # When the row was created (first purchase). Kept for existing data.
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
+    )
+    # When the member last entered / left the Telegram group.
+    group_joined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
+    )
+    group_left_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None,
     )
 
     __table_args__ = (
