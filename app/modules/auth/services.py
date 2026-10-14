@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request, Response
@@ -5,6 +6,7 @@ from fastapi import Request, Response
 from app.core.config import Settings
 from app.core.exceptions import (
     CreatorAlreadyExistsError,
+    CreatorNotFoundError,
     InactiveCreatorError,
     InvalidOTPError,
     OTPAttemptLimitExceededError,
@@ -24,6 +26,7 @@ from app.modules.auth.schemas import (
     RegisterRequest,
     RegisterResponse,
     RequestOTPRequest,
+    UpdatePhoneRequest,
     RequestOTPResponse,
     VerifyOTPRequest,
     VerifyOTPResponse,
@@ -69,10 +72,14 @@ class AuthService:
         if await self._creator_repo.exists_username(request.username):
             raise CreatorAlreadyExistsError("A creator with this username already exists.")
 
+        if request.phone and await self._creator_repo.exists_phone(request.phone):
+            raise CreatorAlreadyExistsError("A creator with this phone number already exists.")
+
         creator = await self._creator_repo.create(
             name=request.name,
             username=request.username,
             email=request.email,
+            phone=request.phone,
         )
 
         logger.info("Creator registered: %s (id=%s)", creator.username, creator.id)
@@ -80,6 +87,27 @@ class AuthService:
         return RegisterResponse(
             creator=CreatorResponse.model_validate(creator),
         )
+
+    # ------------------------------------------------------------------
+    # PHONE
+    # ------------------------------------------------------------------
+
+    async def update_phone(
+        self,
+        creator_id: uuid.UUID,
+        request: UpdatePhoneRequest,
+    ) -> CreatorResponse:
+        """Set the creator's phone number (needed to connect Telegram)."""
+        creator = await self._creator_repo.get_by_id(creator_id)
+        if creator is None:
+            raise CreatorNotFoundError()
+
+        if creator.phone != request.phone and await self._creator_repo.exists_phone(request.phone):
+            raise CreatorAlreadyExistsError("A creator with this phone number already exists.")
+
+        await self._creator_repo.update_phone(creator_id, request.phone)
+        creator.phone = request.phone
+        return CreatorResponse.model_validate(creator)
 
     # ------------------------------------------------------------------
     # REQUEST OTP

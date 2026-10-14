@@ -18,6 +18,10 @@ from app.infrastructure.telegram.telegram_models import (
 class TelegramStub:
     """Deterministic stub implementation of TelegramClient."""
 
+    def __init__(self) -> None:
+        # Messages "sent" through the stub, kept so tests can inspect them.
+        self.sent_messages: list[dict] = []
+
     # ── Bot management ───────────────────────────────────────────────
 
     async def get_me(self) -> TelegramUser:
@@ -30,6 +34,19 @@ class TelegramStub:
 
     async def health_check(self) -> bool:
         return True
+
+    # ── Messaging ────────────────────────────────────────────────────
+
+    async def send_message(
+        self,
+        chat_id: int | str,
+        text: str,
+        *,
+        reply_markup: dict | None = None,
+    ) -> None:
+        self.sent_messages.append(
+            {"chat_id": chat_id, "text": text, "reply_markup": reply_markup},
+        )
 
     # ── Chat operations ──────────────────────────────────────────────
 

@@ -7,9 +7,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class CreatePaymentOrderRequest(BaseModel):
-    """Request payload to create a new checkout order."""
+    """Request payload to create a new checkout order (member comes from the login)."""
 
-    member_id: uuid.UUID
     plan_id: uuid.UUID
 
 

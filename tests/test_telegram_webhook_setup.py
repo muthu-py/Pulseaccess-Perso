@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from app.core.config import Settings, get_settings
 from app.infrastructure.telegram.telegram_driver import TelegramDriver
 from app.main import app as fastapi_app
+from app.infrastructure.telegram import telegram_constants as itc
 from app.modules.telegram import constants as tc
 
 WEBHOOK_SECRET = "test_telegram_webhook_secret"
@@ -38,14 +39,14 @@ async def test_set_webhook_sends_secret_and_allowed_updates(settings: Settings, 
     await driver.set_webhook(
         "https://abc.ngrok-free.app" + tc.WEBHOOK_PATH,
         secret_token=WEBHOOK_SECRET,
-        allowed_updates=tc.WEBHOOK_ALLOWED_UPDATES,
+        allowed_updates=itc.WEBHOOK_ALLOWED_UPDATES,
     )
 
     assert captured["url"] == "https://api.telegram.org/bot123:ABC/setWebhook"
     assert captured["json"] == {
         "url": "https://abc.ngrok-free.app/api/v1/webhooks/telegram",
         "secret_token": WEBHOOK_SECRET,
-        "allowed_updates": ["message", "channel_post", "my_chat_member", "chat_member"],
+        "allowed_updates": ["message", "my_chat_member", "chat_member", "chat_join_request"],
         "drop_pending_updates": False,
     }
 

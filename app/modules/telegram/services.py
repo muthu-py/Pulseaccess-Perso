@@ -3,7 +3,7 @@
 Orchestrates repositories, infrastructure clients, and other services
 to implement the six primary workflows from Doc 05 §5:
   1. Community Connection
-  2. Telegram Account Linking
+  2. Telegram Account Linking (moved to app.modules.telegram_connect)
   3. Invite Generation
   4. Access Revocation
   5. Synchronization
@@ -42,7 +42,6 @@ from app.modules.telegram.exceptions import (
     CommunityNotFoundError,
     InvalidConnectionCodeError,
     SubscriptionInactiveError,
-    TelegramAccountAlreadyLinkedError,
     TelegramNotLinkedError,
     TelegramOperationFailedError,
     UnauthorizedCommunityAccessError,
@@ -51,8 +50,6 @@ from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.schemas import (
     GenerateConnectionCodeResponse,
     InviteResponse,
-    LinkStatusResponse,
-    LinkTelegramResponse,
     TelegramConnectionStatusResponse,
 )
 
@@ -188,51 +185,8 @@ class TelegramService:
 
     # ══════════════════════════════════════════════════════════════════
     #  Workflow 2 — Telegram Account Linking
+    #  Lives in app.modules.telegram_connect (shared by creators and members).
     # ══════════════════════════════════════════════════════════════════
-
-    async def generate_link(self, member_id: uuid.UUID) -> LinkTelegramResponse:
-        """Generate a Telegram deep link for account linking."""
-        member = await self._repo.get_member_by_id(member_id)
-        if member is None:
-            raise CommunityNotFoundError("Member not found.")
-
-        if member.telegram_user_id:
-            raise TelegramAccountAlreadyLinkedError()
-
-        bot_username = getattr(self._settings, "TELEGRAM_BOT_USERNAME", "pulse_access_bot")
-        deep_link = f"https://t.me/{bot_username}?start={tc.DEEP_LINK_PREFIX}{member_id}"
-
-        logger.info("Telegram deep link generated for member %s", member_id)
-
-        return LinkTelegramResponse(telegram_link=deep_link)
-
-    async def get_link_status(self, member_id: uuid.UUID) -> LinkStatusResponse:
-        """Check whether the member has a linked Telegram account."""
-        member = await self._repo.get_member_by_id(member_id)
-        if member is None:
-            raise CommunityNotFoundError("Member not found.")
-
-        linked = bool(member.telegram_user_id)
-        return LinkStatusResponse(
-            linked=linked,
-            telegram_user_id=member.telegram_user_id if linked else None,
-        )
-
-    async def link_account(
-        self,
-        member_id: uuid.UUID,
-        telegram_user_id: str,
-    ) -> None:
-        """Link a Telegram user ID to a PulseAccess member."""
-        # Check if this Telegram account is already linked to another member
-        existing = await self._repo.find_member_by_telegram_id(telegram_user_id)
-        if existing is not None and existing.id != member_id:
-            raise TelegramAccountAlreadyLinkedError(
-                "This Telegram account is already linked to another member.",
-            )
-
-        await self._repo.link_telegram_account(member_id, telegram_user_id)
-        logger.info("Telegram user %s linked to member %s", telegram_user_id, member_id)
 
     # ══════════════════════════════════════════════════════════════════
     #  Workflow 3 — Invite Generation
@@ -255,7 +209,7 @@ class TelegramService:
         if member is None:
             raise CommunityNotFoundError("Member not found.")
 
-        if not member.telegram_user_id:
+        if await self._repo.get_member_telegram_id(member_id) is None:
             raise TelegramNotLinkedError()
 
         # Note: Subscription validation would be performed here by calling
@@ -376,17 +330,17 @@ class TelegramService:
         if community is None or not community.telegram_chat_id:
             raise TelegramNotFoundException("Community or chat not found")
 
-        member = await self._repo.get_member_by_id(op.member_id)
-        if member is None or not member.telegram_user_id:
+        telegram_user_id = await self._repo.get_member_telegram_id(op.member_id)
+        if telegram_user_id is None:
             raise TelegramNotFoundException("Member or telegram ID not found")
 
         await self._telegram.ban_member(
             community.telegram_chat_id,
-            int(member.telegram_user_id),
+            int(telegram_user_id),
         )
         await self._telegram.unban_member(
             community.telegram_chat_id,
-            int(member.telegram_user_id),
+            int(telegram_user_id),
         )
 
     async def _execute_verify_connection(self, op: Any) -> None:
@@ -400,33 +354,6 @@ class TelegramService:
     # ══════════════════════════════════════════════════════════════════
     #  Workflow 6 — Webhook Processing
     # ══════════════════════════════════════════════════════════════════
-
-    async def process_webhook_message(self, update: dict) -> None:
-        """Handle /start command for Telegram account linking."""
-        message = update.get("message", {})
-        text = message.get("text", "")
-        from_user = message.get("from", {})
-
-        if not text.startswith("/start"):
-            return
-
-        parts = text.split(" ", 1)
-        if len(parts) < 2 or not parts[1].startswith(tc.DEEP_LINK_PREFIX):
-            return
-
-        member_id_str = parts[1][len(tc.DEEP_LINK_PREFIX):]
-        telegram_user_id = str(from_user.get("id", ""))
-
-        try:
-            member_id = uuid.UUID(member_id_str)
-        except ValueError:
-            logger.warning("Invalid deep link member ID: %s", member_id_str)
-            return
-
-        try:
-            await self.link_account(member_id, telegram_user_id)
-        except Exception:
-            logger.exception("Failed to link Telegram account via webhook")
 
     async def process_webhook_my_chat_member(self, update: dict) -> None:
         """Handle bot added/removed/promoted/demoted events."""

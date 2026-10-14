@@ -12,9 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.infrastructure.database.session import get_db
-from app.infrastructure.telegram.telegram_driver import TelegramDriver
+from app.infrastructure.telegram.telegram_factory import build_telegram_client
 from app.infrastructure.telegram.telegram_interface import TelegramClient
-from app.infrastructure.telegram.telegram_stub import TelegramStub
 from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.services import TelegramService
 
@@ -28,10 +27,8 @@ def get_telegram_repository(
 def get_telegram_client(
     settings: Settings = Depends(get_settings),
 ) -> TelegramClient:
-    """Return production driver or stub based on environment."""
-    if settings.TELEGRAM_USE_STUB:
-        return TelegramStub()
-    return TelegramDriver(settings=settings)
+    """Return the real driver when a bot token is set, else the stub."""
+    return build_telegram_client(settings)
 
 
 def get_telegram_service(

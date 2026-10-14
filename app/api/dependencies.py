@@ -124,21 +124,25 @@ def get_auth_service(
 
 
 # ======================================================================
-# JWT Auth Guard — get_current_creator
+# JWT Auth Guards — get_current_creator / get_current_member
 # ======================================================================
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
+ROLE_CREATOR = "creator"
+ROLE_MEMBER = "member"
 
-def get_current_creator(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
-    jwt_service: JWTService = Depends(get_jwt_service),
-) -> uuid.UUID:
-    """Validate Bearer JWT and return the authenticated creator_id.
+
+def _authenticate(
+    credentials: HTTPAuthorizationCredentials | None,
+    jwt_service: JWTService,
+) -> tuple[uuid.UUID, str]:
+    """Validate a Bearer access token and return (subject_id, role).
 
     - Only access tokens are accepted (Doc 10 §4).
     - Refresh tokens are explicitly rejected.
     - Missing or invalid tokens → 401 Unauthorized.
+    - Tokens issued before roles existed carry no role and count as creator.
     """
     if credentials is None:
         raise HTTPException(
@@ -171,12 +175,40 @@ def get_current_creator(
         )
 
     try:
-        return uuid.UUID(subject)
+        return uuid.UUID(subject), payload.get("role", ROLE_CREATOR)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token subject format.",
         )
+
+
+def get_current_creator(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    jwt_service: JWTService = Depends(get_jwt_service),
+) -> uuid.UUID:
+    """Validate Bearer JWT and return the authenticated creator_id."""
+    subject_id, role = _authenticate(credentials, jwt_service)
+    if role != ROLE_CREATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a creator login.",
+        )
+    return subject_id
+
+
+def get_current_member(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    jwt_service: JWTService = Depends(get_jwt_service),
+) -> uuid.UUID:
+    """Validate Bearer JWT and return the authenticated member_id."""
+    subject_id, role = _authenticate(credentials, jwt_service)
+    if role != ROLE_MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a member login.",
+        )
+    return subject_id
 
 
 # ======================================================================

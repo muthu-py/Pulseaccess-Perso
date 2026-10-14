@@ -115,6 +115,20 @@ class TelegramDriver:
         except TelegramException:
             return False
 
+    # ── Messaging ────────────────────────────────────────────────────
+
+    async def send_message(
+        self,
+        chat_id: int | str,
+        text: str,
+        *,
+        reply_markup: dict | None = None,
+    ) -> None:
+        params: dict = {"chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            params["reply_markup"] = reply_markup
+        await self._request(tc.SEND_MESSAGE, params)
+
     # ── Chat operations ──────────────────────────────────────────────
 
     async def get_chat(self, chat_id: int | str) -> TelegramChat:
@@ -174,8 +188,9 @@ class TelegramDriver:
         params: dict = {"url": url, "drop_pending_updates": drop_pending_updates}
         if secret_token:
             params["secret_token"] = secret_token
-        if allowed_updates is not None:
-            params["allowed_updates"] = allowed_updates
+        params["allowed_updates"] = (
+            tc.WEBHOOK_ALLOWED_UPDATES if allowed_updates is None else allowed_updates
+        )
         await self._request(tc.SET_WEBHOOK, params)
         return True
 

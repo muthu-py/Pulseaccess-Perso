@@ -13,8 +13,7 @@ import asyncio
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.session import SessionLocal
-from app.infrastructure.telegram.telegram_driver import TelegramDriver
-from app.infrastructure.telegram.telegram_stub import TelegramStub
+from app.infrastructure.telegram.telegram_factory import build_telegram_client
 from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.services import TelegramService
 
@@ -36,10 +35,7 @@ async def run_health_worker() -> None:
             async with SessionLocal() as session:
                 repo = TelegramRepository(session)
 
-                if settings.TELEGRAM_USE_STUB:
-                    client = TelegramStub()
-                else:
-                    client = TelegramDriver(settings=settings)
+                client = build_telegram_client(settings)
 
                 service = TelegramService(
                     repository=repo,

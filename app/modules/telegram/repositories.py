@@ -22,6 +22,8 @@ from app.modules.telegram.enums import (
     TelegramOperationType,
 )
 from app.modules.telegram.models import TelegramOperation
+from app.modules.telegram_connect.enums import OwnerType
+from app.modules.telegram_connect.models import TelegramAccount
 
 
 class TelegramRepository:
@@ -98,22 +100,27 @@ class TelegramRepository:
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def find_member_by_telegram_id(self, telegram_user_id: str) -> Member | None:
-        stmt = select(Member).where(Member.telegram_user_id == telegram_user_id)
+    async def get_member_telegram_id(self, member_id: uuid.UUID) -> str | None:
+        """Telegram user ID the member connected, if any."""
+        stmt = select(TelegramAccount.telegram_user_id).where(
+            TelegramAccount.owner_type == OwnerType.MEMBER.value,
+            TelegramAccount.owner_id == member_id,
+        )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def link_telegram_account(
-        self,
-        member_id: uuid.UUID,
-        telegram_user_id: str,
-    ) -> None:
+    async def find_member_by_telegram_id(self, telegram_user_id: str) -> Member | None:
         stmt = (
-            update(Member)
-            .where(Member.id == member_id)
-            .values(telegram_user_id=telegram_user_id)
+            select(Member)
+            .join(
+                TelegramAccount,
+                (TelegramAccount.owner_id == Member.id)
+                & (TelegramAccount.owner_type == OwnerType.MEMBER.value),
+            )
+            .where(TelegramAccount.telegram_user_id == telegram_user_id)
         )
-        await self._session.execute(stmt)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
 
     # ── Operation queue ──────────────────────────────────────────────
 

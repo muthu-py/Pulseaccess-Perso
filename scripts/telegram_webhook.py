@@ -19,6 +19,7 @@ import sys
 
 from app.core.config import get_settings
 from app.infrastructure.telegram.telegram_driver import TelegramDriver
+from app.infrastructure.telegram import telegram_constants as itc
 from app.modules.telegram import constants as tc
 
 
@@ -36,7 +37,7 @@ async def _set(driver: TelegramDriver, base_url: str, secret: str, drop_pending:
     await driver.set_webhook(
         url,
         secret_token=secret,
-        allowed_updates=tc.WEBHOOK_ALLOWED_UPDATES,
+        allowed_updates=itc.WEBHOOK_ALLOWED_UPDATES,
         drop_pending_updates=drop_pending,
     )
     print(f"Webhook set → {url}")

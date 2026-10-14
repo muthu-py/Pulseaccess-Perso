@@ -31,6 +31,18 @@ class TelegramClient(Protocol):
         """Lightweight connectivity / token verification."""
         ...
 
+    # ── Messaging ────────────────────────────────────────────────────
+
+    async def send_message(
+        self,
+        chat_id: int | str,
+        text: str,
+        *,
+        reply_markup: dict | None = None,
+    ) -> None:
+        """Send a text message, optionally with a reply keyboard."""
+        ...
+
     # ── Chat operations ──────────────────────────────────────────────
 
     async def get_chat(self, chat_id: int | str) -> TelegramChat:

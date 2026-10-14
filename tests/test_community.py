@@ -2,18 +2,31 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_current_creator
 from app.main import app as fastapi_app
 from app.modules.community.repositories import CommunityRepository
+from app.modules.telegram_connect.enums import OwnerType
+from app.modules.telegram_connect.models import TelegramAccount
 
 BASE = "/api/v1/communities"
 CREATOR_ID = uuid.uuid4()
 
 
 @pytest.fixture
-async def client(async_client: AsyncClient) -> AsyncClient:
+async def client(async_client: AsyncClient, db_session: AsyncSession) -> AsyncClient:
     fastapi_app.dependency_overrides[get_current_creator] = lambda: CREATOR_ID
+    # Creating a community requires a connected Telegram account
+    db_session.add(
+        TelegramAccount(
+            owner_type=OwnerType.CREATOR.value,
+            owner_id=CREATOR_ID,
+            telegram_user_id="987654321",
+            phone="+919876543210",
+        )
+    )
+    await db_session.flush()
     return async_client
 
 
