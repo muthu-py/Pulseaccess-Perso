@@ -16,7 +16,6 @@ directly — it delegates to TelegramRepository.
 
 from __future__ import annotations
 
-import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -30,6 +29,7 @@ from app.infrastructure.telegram.telegram_exceptions import (
     TelegramPermissionException,
 )
 from app.infrastructure.telegram.telegram_interface import TelegramClient
+from app.infrastructure.telegram.telegram_models import TelegramChatMember
 from app.modules.telegram import constants as tc
 from app.modules.telegram.enums import (
     TelegramConnectionStatus,
@@ -37,10 +37,8 @@ from app.modules.telegram.enums import (
     TelegramOperationType,
 )
 from app.modules.telegram.exceptions import (
-    CommunityAlreadyConnectedError,
     CommunityNotConnectedError,
     CommunityNotFoundError,
-    InvalidConnectionCodeError,
     SubscriptionInactiveError,
     TelegramNotLinkedError,
     TelegramOperationFailedError,
@@ -48,16 +46,12 @@ from app.modules.telegram.exceptions import (
 )
 from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.schemas import (
-    GenerateConnectionCodeResponse,
     InviteResponse,
     TelegramConnectionStatusResponse,
 )
 
 logger = get_logger(__name__)
 
-# In-memory store for short-lived connection codes.
-# Production could move this to the DB; for now codes expire quickly.
-_connection_codes: dict[str, dict[str, Any]] = {}
 
 
 class TelegramService:
@@ -76,77 +70,6 @@ class TelegramService:
     # ══════════════════════════════════════════════════════════════════
     #  Workflow 1 — Community Connection
     # ══════════════════════════════════════════════════════════════════
-
-    async def generate_connection_code(
-        self,
-        community_id: uuid.UUID,
-        creator_id: uuid.UUID,
-    ) -> GenerateConnectionCodeResponse:
-        """Generate a temporary code for connecting a Telegram group."""
-        community = await self._repo.get_community_by_id(community_id)
-        if community is None:
-            raise CommunityNotFoundError()
-
-        if community.creator_id != creator_id:
-            raise UnauthorizedCommunityAccessError()
-
-        if community.telegram_connection_status == TelegramConnectionStatus.CONNECTED.value:
-            raise CommunityAlreadyConnectedError()
-
-        # Generate a short-lived code
-        code = secrets.token_urlsafe(tc.CONNECTION_CODE_LENGTH)
-        expires_at = datetime.now(timezone.utc) + timedelta(
-            minutes=tc.CONNECTION_CODE_EXPIRY_MINUTES,
-        )
-
-        _connection_codes[code] = {
-            "community_id": str(community_id),
-            "creator_id": str(creator_id),
-            "expires_at": expires_at,
-        }
-
-        # Mark community as CONNECTING
-        await self._repo.update_connection_status(
-            community_id,
-            TelegramConnectionStatus.CONNECTING,
-        )
-
-        bot_username = getattr(self._settings, "TELEGRAM_BOT_USERNAME", "pulse_access_bot")
-
-        logger.info(
-            "Connection code generated for community %s",
-            community_id,
-        )
-
-        return GenerateConnectionCodeResponse(
-            connection_code=code,
-            expires_at=expires_at,
-            bot_username=bot_username,
-        )
-
-    async def validate_connection_code(self, code: str) -> uuid.UUID:
-        """Validate and consume a connection code. Returns the community_id."""
-        entry = _connection_codes.pop(code, None)
-        if entry is None:
-            raise InvalidConnectionCodeError()
-
-        if entry["expires_at"] < datetime.now(timezone.utc):
-            raise InvalidConnectionCodeError("Connection code has expired.")
-
-        return uuid.UUID(entry["community_id"])
-
-    async def connect_community(
-        self,
-        community_id: uuid.UUID,
-        chat_id: str,
-    ) -> None:
-        """Finalise Telegram connection for a community."""
-        await self._repo.mark_connected(community_id, chat_id)
-        logger.info(
-            "Community %s connected to Telegram chat %s",
-            community_id,
-            chat_id,
-        )
 
     async def disconnect_community(
         self,
@@ -356,30 +279,180 @@ class TelegramService:
     # ══════════════════════════════════════════════════════════════════
 
     async def process_webhook_my_chat_member(self, update: dict) -> None:
-        """Handle bot added/removed/promoted/demoted events."""
+        """Bot added / promoted / demoted / removed in a group or channel.
+
+        Connection rule: the bot must be added by a creator (matched through
+        their verified Telegram account), and that creator must have exactly
+        one active community not yet linked to a chat. That community gets
+        this chat. The bot's real admin rights decide CONNECTED vs
+        NEEDS_ATTENTION.
+        """
         event = update.get("my_chat_member", {})
         chat = event.get("chat", {})
-        new_status = event.get("new_chat_member", {}).get("status", "")
+        if chat.get("type") not in tc.GROUP_CHAT_TYPES:
+            return
+
         chat_id = str(chat.get("id", ""))
+        title = chat.get("title") or chat_id
+        actor_id = str(event.get("from", {}).get("id", ""))
+        new_member = event.get("new_chat_member", {})
+        new_status = new_member.get("status", "")
+        bot_user_id = new_member.get("user", {}).get("id")
 
         community = await self._repo.get_community_by_chat_id(chat_id)
 
-        if new_status in ("administrator", "member"):
-            # Bot was added or promoted
-            if community:
+        if new_status in tc.BOT_GONE_STATUSES:
+            if community is not None:
                 await self._repo.update_connection_status(
-                    community.id,
-                    TelegramConnectionStatus.CONNECTED,
-                )
-                logger.info("Bot added to chat %s → community %s", chat_id, community.id)
-        elif new_status in ("left", "kicked"):
-            # Bot was removed
-            if community:
-                await self._repo.update_connection_status(
-                    community.id,
-                    TelegramConnectionStatus.NEEDS_ATTENTION,
+                    community.id, TelegramConnectionStatus.NEEDS_ATTENTION,
                 )
                 logger.warning("Bot removed from chat %s → community %s", chat_id, community.id)
+                await self._notify_creator(
+                    community.creator_id,
+                    tc.MSG_GROUP_BOT_REMOVED.format(title=title, community=community.name),
+                )
+            return
+
+        if new_status not in tc.BOT_PRESENT_STATUSES:
+            return
+
+        if community is None:
+            community = await self._link_pending_community(chat_id, title, actor_id)
+            if community is None:
+                return
+
+        await self._refresh_connection(community, chat_id, title, bot_user_id, new_member)
+
+    async def _link_pending_community(self, chat_id: str, title: str, actor_id: str):
+        """Attach this chat to the actor's single pending community, if any."""
+        creator_id = await self._repo.get_creator_id_by_telegram_user(actor_id)
+        if creator_id is None:
+            logger.info(
+                "Bot added to chat %s by Telegram user %s who is not a connected creator; ignoring",
+                chat_id, actor_id,
+            )
+            return None
+
+        pending = await self._repo.get_unlinked_communities(creator_id)
+        if len(pending) != 1:
+            logger.info(
+                "Bot added to chat %s by creator %s with %d pending communities; ignoring",
+                chat_id, creator_id, len(pending),
+            )
+            if not pending:
+                await self._send_private(actor_id, tc.MSG_GROUP_NO_PENDING.format(title=title))
+            return None
+
+        community = pending[0]
+        await self._repo.save_chat_id(community.id, chat_id)
+        community.telegram_chat_id = chat_id
+        logger.info("Chat %s linked to community %s", chat_id, community.id)
+        return community
+
+    async def _refresh_connection(
+        self,
+        community: Any,
+        chat_id: str,
+        title: str,
+        bot_user_id: int | None,
+        reported_member: dict,
+    ) -> None:
+        """Set CONNECTED / NEEDS_ATTENTION from the bot's actual rights."""
+        member = await self._fetch_bot_member(chat_id, bot_user_id, reported_member)
+        has_rights = (
+            member is not None
+            and member.status == "administrator"
+            and member.can_invite_users
+            and member.can_restrict_members
+        )
+        previous = community.telegram_connection_status
+
+        if has_rights:
+            if previous != TelegramConnectionStatus.CONNECTED.value:
+                await self._repo.mark_connected(community.id, chat_id)
+                community.telegram_connection_status = TelegramConnectionStatus.CONNECTED.value
+                logger.info("Community %s CONNECTED to chat %s", community.id, chat_id)
+                await self._notify_creator(
+                    community.creator_id,
+                    tc.MSG_GROUP_CONNECTED.format(title=title, community=community.name),
+                )
+            return
+
+        if previous != TelegramConnectionStatus.NEEDS_ATTENTION.value:
+            await self._repo.update_connection_status(
+                community.id, TelegramConnectionStatus.NEEDS_ATTENTION,
+            )
+            community.telegram_connection_status = TelegramConnectionStatus.NEEDS_ATTENTION.value
+            logger.info(
+                "Community %s NEEDS_ATTENTION: bot lacks admin rights in chat %s",
+                community.id, chat_id,
+            )
+            await self._notify_creator(
+                community.creator_id,
+                tc.MSG_GROUP_NEEDS_ADMIN.format(title=title, community=community.name),
+            )
+
+    async def _fetch_bot_member(
+        self,
+        chat_id: str,
+        bot_user_id: int | None,
+        reported_member: dict,
+    ) -> TelegramChatMember | None:
+        """Ask Telegram for the bot's current rights; fall back to the update's copy."""
+        if bot_user_id is None:
+            bot_user_id = (await self._telegram.get_me()).id
+        try:
+            return await self._telegram.get_chat_member(chat_id, int(bot_user_id))
+        except TelegramException:
+            logger.warning(
+                "getChatMember failed for chat %s; using rights from the update", chat_id,
+            )
+            try:
+                return TelegramChatMember.model_validate(reported_member)
+            except ValueError:
+                return None
+
+    async def process_webhook_group_message(self, message: dict) -> None:
+        """Group upgraded to supergroup: Telegram moves it to a new chat id."""
+        new_chat_id = message.get("migrate_to_chat_id")
+        if new_chat_id is None:
+            return
+
+        old_chat_id = str(message.get("chat", {}).get("id", ""))
+        community = await self._repo.replace_chat_id(old_chat_id, str(new_chat_id))
+        if community is None:
+            return
+        logger.info(
+            "Community %s chat migrated %s → %s", community.id, old_chat_id, new_chat_id,
+        )
+        # Rights may have changed with the upgrade; re-check on the new chat.
+        await self._refresh_connection(
+            community,
+            str(new_chat_id),
+            message.get("chat", {}).get("title") or str(new_chat_id),
+            None,
+            {},
+        )
+
+    async def _notify_creator(self, creator_id: uuid.UUID, text: str) -> None:
+        telegram_user_id = await self._repo.get_creator_telegram_user_id(creator_id)
+        if telegram_user_id:
+            await self._send_private(telegram_user_id, text)
+
+    async def _send_private(self, telegram_user_id: str, text: str) -> None:
+        """Best effort: the connection result stands even if the message fails."""
+        try:
+            await self._telegram.send_message(int(telegram_user_id), text)
+        except (TelegramException, ValueError):
+            logger.exception("Failed to message Telegram user %s", telegram_user_id)
+
+    # ── Webhook de-duplication ───────────────────────────────────────
+
+    async def is_update_processed(self, update_id: int) -> bool:
+        return await self._repo.is_update_processed(update_id)
+
+    async def record_update(self, update_id: int) -> None:
+        await self._repo.record_update(update_id)
 
     async def process_webhook_chat_member(self, update: dict) -> None:
         """Handle member joined/left/kicked events."""

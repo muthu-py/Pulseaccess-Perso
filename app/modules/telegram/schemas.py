@@ -12,17 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 # ======================================================================
-# Connection Code
-# ======================================================================
-
-class GenerateConnectionCodeResponse(BaseModel):
-    """Returned when a creator requests a connection code."""
-    connection_code: str
-    expires_at: datetime
-    bot_username: str
-
-
-# ======================================================================
 # Connection Status
 # ======================================================================
 

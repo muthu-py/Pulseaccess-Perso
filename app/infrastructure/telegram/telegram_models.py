@@ -39,6 +39,9 @@ class TelegramChatMember(BaseModel):
 
     user: TelegramUser
     status: str  # "creator", "administrator", "member", "restricted", "left", "kicked"
+    # Administrator rights (absent → False for non-admins)
+    can_invite_users: bool = False
+    can_restrict_members: bool = False
 
 
 class TelegramInviteLink(BaseModel):
@@ -65,3 +68,4 @@ class TelegramWebhookInfo(BaseModel):
     pending_update_count: int = 0
     last_error_date: int | None = None
     last_error_message: str | None = None
+    allowed_updates: list[str] = []

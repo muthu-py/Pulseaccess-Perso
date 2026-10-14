@@ -14,6 +14,7 @@ from app.infrastructure.telegram.telegram_models import (
     TelegramChatMember,
     TelegramInviteLink,
     TelegramUser,
+    TelegramWebhookInfo,
 )
 
 
@@ -92,12 +93,18 @@ class TelegramClient(Protocol):
         self,
         url: str,
         secret_token: str | None = None,
+        allowed_updates: list[str] | None = None,
+        drop_pending_updates: bool = False,
     ) -> bool:
         """Register a webhook URL with Telegram."""
         ...
 
-    async def delete_webhook(self) -> bool:
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> bool:
         """Remove the current webhook."""
+        ...
+
+    async def get_webhook_info(self) -> TelegramWebhookInfo:
+        """Return the bot's current webhook configuration."""
         ...
 
     # ── Webhook verification ─────────────────────────────────────────

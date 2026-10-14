@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_USERNAME: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
     TELEGRAM_API_BASE_URL: str = "https://api.telegram.org"
+    # Public base URL Telegram posts updates to (e.g. an ngrok https URL)
+    TELEGRAM_WEBHOOK_BASE_URL: str = ""
+    # When true, TelegramStub replaces the real driver (no Bot API calls)
+    TELEGRAM_USE_STUB: bool = False
 
     # Retry configuration
     TELEGRAM_MAX_RETRIES: int = 5

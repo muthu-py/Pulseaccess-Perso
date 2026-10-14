@@ -1,5 +1,6 @@
 """Connect Telegram: member/creator login roles, bot linking flow and guards."""
 
+import itertools
 import uuid
 
 import pytest
@@ -16,6 +17,9 @@ from app.modules.telegram_connect.dependencies import get_telegram_client
 
 MEMBER_PHONE = "+919876543210"
 TG_USER_ID = 555000111
+
+# The webhook skips repeated update_ids, so every test update needs its own.
+_update_ids = itertools.count(1)
 
 
 class FakeEmailService:
@@ -49,7 +53,7 @@ def _webhook_headers() -> dict:
 
 def _private_message(user_id: int = TG_USER_ID, **fields) -> dict:
     return {
-        "update_id": 1,
+        "update_id": next(_update_ids),
         "message": {
             "message_id": 1,
             "from": {"id": user_id, "is_bot": False, "first_name": "Test", "username": "tester"},

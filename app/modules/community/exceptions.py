@@ -19,6 +19,21 @@ class DuplicateCommunityNameError(PulseAccessException):
     message = "A community with this name already exists."
 
 
+class PendingTelegramConnectionError(PulseAccessException):
+    """Only one community per creator may wait for its Telegram group.
+
+    When the bot is added to a group, the creator's single unlinked
+    community is the one it gets connected to.
+    """
+
+    status_code = 409
+    error_code = "PENDING_TELEGRAM_CONNECTION"
+    message = (
+        "Connect your existing community to its Telegram group "
+        "before creating another one."
+    )
+
+
 class CommunityOwnershipError(PulseAccessException):
     """Returns 404 to prevent leaking whether a community exists."""
 

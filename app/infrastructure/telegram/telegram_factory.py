@@ -11,10 +11,12 @@ from app.infrastructure.telegram.telegram_stub import TelegramStub
 def build_telegram_client(settings: Settings) -> TelegramClient:
     """Return the real driver when a bot token is configured, else the stub.
 
+    TELEGRAM_USE_STUB=true forces the stub even when a token is set.
+
     Keying this on the token (not APP_ENV) means a developer running locally
     with a real bot token talks to Telegram, while tests and setups without
     a token never make network calls.
     """
-    if not settings.TELEGRAM_BOT_TOKEN:
+    if settings.TELEGRAM_USE_STUB or not settings.TELEGRAM_BOT_TOKEN:
         return TelegramStub()
     return TelegramDriver(settings=settings)

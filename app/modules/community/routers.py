@@ -51,7 +51,7 @@ async def create_community(
     service: CommunityService = Depends(get_community_service),
 ) -> BaseSuccessResponse[CommunityResponse]:
     """Create a new community."""
-    result = await service.create_community(creator_id, body.name)
+    result = await service.create_community(creator_id, body.name, body.description)
     return BaseSuccessResponse(data=result)
 
 
@@ -138,8 +138,13 @@ async def update_community(
     creator_id: uuid.UUID = Depends(get_current_creator),
     service: CommunityService = Depends(get_community_service),
 ) -> BaseSuccessResponse[CommunityResponse]:
-    """Update a community's name."""
-    result = await service.update_community(community_id, creator_id, body.name)
+    """Update a community's name and optionally its description."""
+    if "description" in body.model_fields_set:
+        result = await service.update_community(
+            community_id, creator_id, body.name, body.description,
+        )
+    else:
+        result = await service.update_community(community_id, creator_id, body.name)
     return BaseSuccessResponse(data=result)
 
 
