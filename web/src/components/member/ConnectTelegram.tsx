@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
+import { Pulse } from "@/components/ui/Brand";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -99,9 +100,7 @@ export function ConnectTelegram() {
                   Get a new link
                 </Button>
               </div>
-              <p className="flex items-center gap-2 text-sm text-ink-muted">
-                <Spinner label="Waiting" /> Waiting for Telegram to confirm. This page updates by itself.
-              </p>
+              <Pulse>Waiting for Telegram to confirm. This page updates by itself.</Pulse>
             </div>
           ) : (
             <div>

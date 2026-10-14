@@ -8,7 +8,7 @@ import { useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { Spinner } from "@/components/ui/Spinner";
+import { LoadingRow, PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import type { Community } from "@/lib/api/types";
@@ -45,11 +45,7 @@ export function CommunityDetail() {
   });
 
   if (isPending) {
-    return (
-      <p className="flex items-center gap-2 text-ink-muted">
-        <Spinner label="Loading" /> Loading…
-      </p>
-    );
+    return <LoadingRow />;
   }
 
   if (error) {
@@ -69,51 +65,59 @@ export function CommunityDetail() {
   const nextAction = community.is_active ? "deactivate" : "activate";
 
   return (
-    <div className="flex max-w-xl flex-col gap-6">
-      <Link href="/app" className="text-sm text-accent underline underline-offset-4">
-        Back to communities
-      </Link>
-
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">{community.name}</h1>
-          <StatusBadge kind="connection" value={community.telegram_connected ? "CONNECTED" : "NOT_CONNECTED"} />
-          {!community.is_active && (
-            <span className="inline-flex h-6 items-center rounded-full bg-neutral-soft px-2.5 text-[13px] font-medium text-neutral">
-              Inactive
-            </span>
-          )}
-        </div>
-        {community.description && <p className="text-ink-muted">{community.description}</p>}
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-col gap-5">
+        <Link href="/app" className="w-fit text-sm text-ink-muted transition-colors hover:text-ink">
+          ‹ Communities
+        </Link>
+        <PageHeader
+          title={community.name}
+          meta={
+            <>
+              <StatusBadge kind="connection" value={community.telegram_connected ? "CONNECTED" : "NOT_CONNECTED"} />
+              {!community.is_active && (
+                <span className="inline-flex h-6 items-center rounded-full bg-neutral-soft px-2.5 text-[13px] font-medium text-neutral">
+                  Inactive
+                </span>
+              )}
+            </>
+          }
+          description={community.description}
+          actions={
+            !editing && (
+              <>
+                <Button variant="secondary" onClick={() => setEditing(true)}>
+                  Edit details
+                </Button>
+                <Button variant={community.is_active ? "ghost" : "primary"} onClick={() => setConfirming(true)}>
+                  {community.is_active ? "Deactivate" : "Activate"}
+                </Button>
+              </>
+            )
+          }
+        />
       </div>
 
       {actionError && <Alert tone="danger" title={actionError} />}
 
+      {editing && (
+        <section aria-label="Edit details" className="rounded-[var(--radius-card)] border border-line bg-surface p-5 sm:p-6">
+          <CommunityForm
+            initial={community}
+            submitLabel="Save changes"
+            onCancel={() => setEditing(false)}
+            onSubmit={async (values) => {
+              await apiRequest<Community>(`/communities/${id}`, { method: "PATCH", body: values });
+              await refresh();
+              setEditing(false);
+            }}
+          />
+        </section>
+      )}
+
       <ConnectionPanel communityId={community.id} />
 
       <PlansSection communityId={community.id} />
-
-      {editing ? (
-        <CommunityForm
-          initial={community}
-          submitLabel="Save changes"
-          onCancel={() => setEditing(false)}
-          onSubmit={async (values) => {
-            await apiRequest<Community>(`/communities/${id}`, { method: "PATCH", body: values });
-            await refresh();
-            setEditing(false);
-          }}
-        />
-      ) : (
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            Edit details
-          </Button>
-          <Button variant={community.is_active ? "secondary" : "primary"} onClick={() => setConfirming(true)}>
-            {community.is_active ? "Deactivate" : "Activate"}
-          </Button>
-        </div>
-      )}
 
       {confirming && (
         <ConfirmDialog

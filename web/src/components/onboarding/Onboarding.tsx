@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonClass } from "@/components/ui/Button";
+import { Pulse } from "@/components/ui/Brand";
 import { Icon } from "@/components/ui/icons";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Spinner } from "@/components/ui/Spinner";
 import { TextField } from "@/components/ui/TextField";
 import { ApiError, apiRequest } from "@/lib/api/client";
@@ -146,7 +148,7 @@ function TelegramStep({ needsPhone, onNeedsPhone }: { needsPhone: boolean; onNee
               href={link.telegram_link}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex h-10 items-center rounded-[var(--radius-control)] bg-accent px-4 text-[15px] font-medium text-accent-ink hover:bg-accent-hover"
+              className={buttonClass("primary", "md")}
             >
               Open Telegram
             </a>
@@ -154,9 +156,7 @@ function TelegramStep({ needsPhone, onNeedsPhone }: { needsPhone: boolean; onNee
               Get a new link
             </Button>
           </div>
-          <p role="status" className="flex items-center gap-2 text-sm text-ink-muted">
-            <Spinner label="Waiting" /> Waiting for Telegram to confirm. This page updates by itself.
-          </p>
+          <Pulse>Waiting for Telegram to confirm. This page updates by itself.</Pulse>
           <p className="text-sm text-ink-subtle">Link expires {new Date(link.expires_at).toLocaleTimeString()}.</p>
         </div>
       ) : (
@@ -269,11 +269,11 @@ export function Onboarding() {
   }
 
   return (
-    <div className="flex max-w-xl flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Set up your first community</h1>
-        <p className="text-ink-muted">Two quick steps. You can finish the rest from the community page.</p>
-      </div>
+    <div className="flex max-w-2xl flex-col gap-8">
+      <PageHeader
+        title="Set up your first community"
+        description="Two steps. You'll connect the group and add plans on the community page after."
+      />
       <ol className="flex flex-col gap-3">
         <Step number={1} title="Connect your Telegram account" done={connected} active={!connected}>
           <TelegramStep needsPhone={needsPhone} onNeedsPhone={setNeedsPhone} />

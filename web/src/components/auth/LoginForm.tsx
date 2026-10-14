@@ -100,13 +100,16 @@ export function LoginForm() {
         {formError && <Alert tone="danger" title={formError} />}
         <TextField
           label="Email or username"
+          name="identifier"
           autoComplete="username"
+          spellCheck={false}
+          placeholder="you@example.com or asha_trades"
           value={identifier}
           error={fieldError ?? undefined}
           onChange={(e) => setIdentifier(e.target.value)}
           required
         />
-        <Button type="submit" loading={submitting}>
+        <Button type="submit" size="lg" className="w-full" loading={submitting}>
           Send code
         </Button>
         <p className="text-sm text-ink-muted">
@@ -127,6 +130,9 @@ export function LoginForm() {
         label="6-digit code"
         inputMode="numeric"
         autoComplete="one-time-code"
+        name="otp"
+        spellCheck={false}
+        placeholder="123456"
         maxLength={6}
         value={code}
         error={fieldError ?? undefined}
@@ -134,7 +140,7 @@ export function LoginForm() {
         hint="Codes expire after 5 minutes."
         required
       />
-      <Button type="submit" loading={submitting}>
+      <Button type="submit" size="lg" className="w-full" loading={submitting}>
         Log in
       </Button>
       <div className="flex gap-2">

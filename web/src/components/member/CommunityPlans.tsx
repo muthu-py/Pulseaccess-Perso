@@ -6,14 +6,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { Button } from "@/components/ui/Button";
+import { PlanPass } from "@/components/plans/PlansSection";
+import { EmptyState, LoadingRow, PageHeader } from "@/components/ui/PageHeader";
 import { Spinner } from "@/components/ui/Spinner";
 import { ApiError, apiRequest } from "@/lib/api/client";
 import type { Payment } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
+import { formatRupees } from "@/lib/format";
 import { useAvailablePlans, useMemberTelegram } from "@/lib/member";
-
-const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 
 /** What a member sees at /c/[communityId]: the plans they can buy. Needs a member login for now. */
 export function CommunityPlans() {
@@ -50,8 +50,8 @@ export function CommunityPlans() {
   const connectHref = `/m/connect-telegram?next=${encodeURIComponent(`/c/${communityId}`)}`;
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Choose a plan</h1>
+    <div className="flex flex-col gap-8">
+      <PageHeader title="Choose a plan" description="Pay once for the days shown. Payment happens on Razorpay." />
 
       {telegramMissing && (
         <Alert tone="warning" title="Connect Telegram before you pay.">
@@ -64,9 +64,7 @@ export function CommunityPlans() {
       {error && <Alert tone="danger" title={error} />}
 
       {plans.isPending ? (
-        <p className="flex items-center gap-2 text-ink-muted">
-          <Spinner label="Loading" /> Loading plans…
-        </p>
+        <LoadingRow label="Loading plans…" />
       ) : plans.error ? (
         <Alert tone="danger" title="Couldn't load plans.">
           {errorText(plans.error, {
@@ -75,32 +73,31 @@ export function CommunityPlans() {
           })}
         </Alert>
       ) : plans.data.length === 0 ? (
-        <p className="rounded-[var(--radius-card)] border border-dashed border-line-strong p-6 text-ink-muted">
-          No plans are available right now.
-        </p>
+        <EmptyState title="No plans are available right now">Check back later, or ask the community&apos;s creator.</EmptyState>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-5 sm:grid-cols-2">
           {plans.data.map((plan) => (
-            <li key={plan.id} className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-5">
-              <h2 className="font-medium">{plan.name}</h2>
-              <p className="text-2xl font-semibold">
-                ₹{plan.price} <span className="text-base font-normal text-ink-muted">for {days(plan.duration_days)}</span>
-              </p>
-              {plan.description && <p className="text-sm text-ink-muted">{plan.description}</p>}
-              <div className="mt-auto">
-                <Button
-                  aria-label={`Pay for ${plan.name}`}
-                  loading={payingId === plan.id}
-                  disabled={pay.isPending && payingId !== plan.id}
-                  onClick={() => {
-                    setPayingId(plan.id);
-                    setError(null);
-                    pay.mutate(plan.id);
-                  }}
-                >
-                  Pay ₹{plan.price}
-                </Button>
-              </div>
+            <li key={plan.id} className="min-w-0">
+              <PlanPass
+                plan={plan}
+                footer={
+                  <button
+                    type="button"
+                    aria-label={`Pay for ${plan.name}`}
+                    aria-busy={payingId === plan.id || undefined}
+                    disabled={pay.isPending}
+                    onClick={() => {
+                      setPayingId(plan.id);
+                      setError(null);
+                      pay.mutate(plan.id);
+                    }}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-pass-ink text-[15px] font-medium text-pass transition-[opacity,transform] hover:opacity-90 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {payingId === plan.id && <Spinner label="Working" />}
+                    Pay {formatRupees(plan.price)}
+                  </button>
+                }
+              />
             </li>
           ))}
         </ul>

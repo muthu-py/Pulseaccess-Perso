@@ -201,7 +201,8 @@ describe("AppShell", () => {
     );
 
     expect(await screen.findByText("secret")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /log out/i }));
+    // The shell has a mobile and a desktop Log out button; CSS shows one at a time.
+    await userEvent.click(screen.getAllByRole("button", { name: /log out/i })[0]);
 
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/login"));
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/v1/auth/logout")).toBe(true);

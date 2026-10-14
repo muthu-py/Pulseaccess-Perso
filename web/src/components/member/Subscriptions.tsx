@@ -1,45 +1,59 @@
 "use client";
 
 import { Alert } from "@/components/ui/Alert";
-import { Spinner } from "@/components/ui/Spinner";
+import { EmptyState, LoadingRow, PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { errorText } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 import { useSubscriptions } from "@/lib/member";
 
-const date = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+/** Days left until `iso`, or null if it has passed. */
+function daysLeft(iso: string): number | null {
+  const ms = new Date(iso).getTime() - Date.now();
+  return ms > 0 ? Math.ceil(ms / 86_400_000) : null;
+}
 
 export function Subscriptions() {
   const { data, error, isPending } = useSubscriptions();
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold tracking-tight">My subscriptions</h1>
+    <div className="flex flex-col gap-8">
+      <PageHeader title="My subscriptions" description="Every plan you've paid for, newest first." />
 
       {isPending ? (
-        <p className="flex items-center gap-2 text-ink-muted">
-          <Spinner label="Loading" /> Loading…
-        </p>
+        <LoadingRow />
       ) : error ? (
         <Alert tone="danger" title="Couldn't load your subscriptions.">
           {errorText(error)}
         </Alert>
       ) : data.subscriptions.length === 0 ? (
-        <p className="rounded-[var(--radius-card)] border border-dashed border-line-strong p-6 text-ink-muted">
-          You have no subscriptions yet. Open a community link from its creator to choose a plan.
-        </p>
+        <EmptyState title="No subscriptions yet">
+          Open a community link from its creator to choose a plan.
+        </EmptyState>
       ) : (
-        <ul className="flex flex-col divide-y divide-line rounded-[var(--radius-card)] border border-line bg-surface">
-          {data.subscriptions.map((s) => (
-            <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="flex flex-col text-sm">
-                <span className="font-medium">
-                  {date(s.starts_at)} to {date(s.ends_at)}
-                </span>
-                <span className="font-mono text-ink-subtle">{s.id}</span>
-              </div>
-              <StatusBadge kind="subscription" value={s.status} />
-            </li>
-          ))}
+        <ul className="flex flex-col gap-3">
+          {data.subscriptions.map((s) => {
+            const left = s.status === "active" ? daysLeft(s.ends_at) : null;
+            return (
+              <li
+                key={s.id}
+                className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-card)] border border-line bg-surface p-5"
+              >
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="font-display text-lg font-semibold tabular">
+                    {formatDate(s.starts_at)} to {formatDate(s.ends_at)}
+                  </p>
+                  <p className="text-sm text-ink-muted">
+                    {left !== null ? `${left} ${left === 1 ? "day" : "days"} left` : "Ended"}
+                  </p>
+                  <p translate="no" className="truncate font-mono text-xs text-ink-subtle">
+                    {s.id}
+                  </p>
+                </div>
+                <StatusBadge kind="subscription" value={s.status} />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

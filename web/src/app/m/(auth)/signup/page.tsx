@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Create a member account" };
 
 export default function MemberSignupPage() {
   return (
-    <AuthCard title="Create your account" subtitle="To join a paid Telegram community.">
+    <AuthCard audience="member" title="Create your account" subtitle="To join a paid Telegram community.">
       <Suspense>
         <MemberSignupForm />
       </Suspense>

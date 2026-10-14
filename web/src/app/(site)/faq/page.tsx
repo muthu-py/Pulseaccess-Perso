@@ -45,12 +45,12 @@ const QUESTIONS: { q: string; a: string }[] = [
 
 export default function Faq() {
   return (
-    <Page title="Frequently asked questions">
-      <dl className="flex flex-col gap-6">
+    <Page title="Frequently asked questions" intro="Logging in, payments, plans and the Telegram bot.">
+      <dl className="flex flex-col divide-y divide-line border-y border-line">
         {QUESTIONS.map(({ q, a }) => (
-          <div key={q} className="flex flex-col gap-1">
-            <dt className="font-medium">{q}</dt>
-            <dd className="text-ink-muted">{a}</dd>
+          <div key={q} className="flex flex-col gap-2 py-6">
+            <dt className="font-display text-xl font-semibold text-ink">{q}</dt>
+            <dd className="text-[17px] leading-relaxed text-ink-muted">{a}</dd>
           </div>
         ))}
       </dl>

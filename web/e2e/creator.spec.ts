@@ -53,7 +53,7 @@ test("creator: sign up, log in, connect Telegram, create a community, connect th
   await page.getByLabel("Plan name").fill("Monthly");
   await page.getByLabel("Price").fill("499");
   await page.getByRole("button", { name: "Create plan" }).click();
-  await expect(page.getByRole("row", { name: /Monthly/ })).toContainText("₹499.00");
+  await expect(page.getByRole("listitem", { name: "Monthly" })).toContainText("₹499");
 
   // Log out returns to login
   await page.getByRole("button", { name: "Log out" }).click();

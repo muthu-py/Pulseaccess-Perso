@@ -81,7 +81,8 @@ describe("CommunityPlans", () => {
     });
     wrap(<CommunityPlans />);
 
-    expect(await screen.findByText("for 30 days")).toBeInTheDocument();
+    expect(await screen.findByText("30 days")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pay for Monthly" })).toHaveTextContent("Pay ₹499");
     await userEvent.click(screen.getByRole("button", { name: "Pay for Monthly" }));
 
     await vi.waitFor(() => expect(router.push).toHaveBeenCalledWith("/m/payments/pay1"));
@@ -155,7 +156,7 @@ describe("PaymentStatus", () => {
     wrap(<PaymentStatus />);
 
     expect(await screen.findByText("Awaiting payment")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /pay ₹499.00 on razorpay/i })).toHaveAttribute("href", "https://rzp.io/l/abc");
+    expect(screen.getByRole("link", { name: /pay ₹499 on razorpay/i })).toHaveAttribute("href", "https://rzp.io/l/abc");
 
     await act(() => vi.advanceTimersByTimeAsync(3100));
     expect(await screen.findByText("Payment received.")).toBeInTheDocument();

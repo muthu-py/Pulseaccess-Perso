@@ -16,13 +16,13 @@ test("member: opens a community link, logs in, pays and sees the real payment st
   await page.getByRole("button", { name: "Log in", exact: true }).click();
 
   await expect(page).toHaveURL(/\/c\/c1$/);
-  await expect(page.getByText("for 30 days")).toBeVisible();
+  await expect(page.getByText("30 days")).toBeVisible();
   await page.getByRole("button", { name: "Pay for Monthly" }).click();
 
   // Payment page: pay link opens in a new tab, status comes from the backend
   await expect(page).toHaveURL(/\/m\/payments\/pay1/);
   await expect(page.getByText("Awaiting payment")).toBeVisible();
-  const payLink = page.getByRole("link", { name: /Pay ₹499.00 on Razorpay/ });
+  const payLink = page.getByRole("link", { name: /Pay ₹499 on Razorpay/ });
   await expect(payLink).toHaveAttribute("target", "_blank");
   await expect(payLink).toHaveAttribute("href", "https://rzp.io/l/abc");
 
@@ -86,7 +86,7 @@ test("member pages have no serious a11y issues and no sideways scroll", async ({
   await page.getByRole("button", { name: "Send code" }).click();
   await page.getByLabel("6-digit code").fill("123456");
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page.getByText("for 30 days")).toBeVisible();
+  await expect(page.getByText("30 days")).toBeVisible();
 
   const checks: [string, () => Promise<void>][] = [
     ["plans", async () => {}],

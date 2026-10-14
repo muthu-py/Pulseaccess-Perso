@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
-import { Spinner } from "@/components/ui/Spinner";
+import { buttonClass } from "@/components/ui/Button";
+import { EmptyState, LoadingRow, PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { PAGE_SIZE, useCommunities } from "@/lib/creator";
 import { errorText } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 
 type Tab = "active" | "inactive";
 
@@ -15,9 +17,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "active", label: "Active" },
   { id: "inactive", label: "Inactive" },
 ];
-
-const linkButton =
-  "inline-flex h-10 items-center rounded-[var(--radius-control)] bg-accent px-4 text-[15px] font-medium text-accent-ink hover:bg-accent-hover";
 
 export function CommunityList() {
   const [tab, setTab] = useState<Tab>("active");
@@ -27,15 +26,22 @@ export function CommunityList() {
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Communities</h1>
-        <Link href="/app/communities/new" className={linkButton}>
-          New community
-        </Link>
-      </div>
+    <div className="flex flex-col gap-8">
+      <PageHeader
+        title="Communities"
+        description="Each community is one Telegram group with its own plans."
+        actions={
+          <Link href="/app/communities/new" className={buttonClass("primary", "md")}>
+            New community
+          </Link>
+        }
+      />
 
-      <div role="tablist" aria-label="Community status" className="flex gap-1 border-b border-line">
+      <div
+        role="tablist"
+        aria-label="Community status"
+        className="inline-flex w-fit gap-1 rounded-[calc(var(--radius-control)+4px)] bg-surface-sunken p-1"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -46,11 +52,14 @@ export function CommunityList() {
               setTab(t.id);
               setPage(1);
             }}
-            className={`-mb-px border-b-2 px-3 py-2 text-[15px] ${
-              tab === t.id ? "border-accent font-medium text-ink" : "border-transparent text-ink-muted hover:text-ink"
+            className={`rounded-[var(--radius-control)] px-4 py-1.5 text-sm transition-[background-color,color,box-shadow] ${
+              tab === t.id
+                ? "bg-surface font-medium text-ink shadow-[0_1px_2px_rgb(22_24_29/0.08)]"
+                : "text-ink-muted hover:text-ink"
             }`}
           >
             {t.label}
+            {tab === t.id && data && <span aria-hidden="true" className="ml-1.5 tabular text-ink-subtle">{data.total}</span>}
           </button>
         ))}
       </div>
@@ -61,28 +70,46 @@ export function CommunityList() {
             {errorText(error)}
           </Alert>
         ) : isPending ? (
-          <p className="flex items-center gap-2 text-ink-muted">
-            <Spinner label="Loading" /> Loading…
-          </p>
+          <LoadingRow />
         ) : data.communities.length === 0 ? (
-          <p className="rounded-[var(--radius-card)] border border-dashed border-line-strong p-6 text-ink-muted">
-            {tab === "active"
-              ? "No active communities. Create one, or reactivate one from the Inactive tab."
-              : "No inactive communities."}
-          </p>
+          tab === "active" ? (
+            <EmptyState
+              title="No active communities"
+              action={
+                <Link href="/app/communities/new" className={buttonClass("secondary", "md")}>
+                  Create a community
+                </Link>
+              }
+            >
+              Create one, or reactivate one from the Inactive tab.
+            </EmptyState>
+          ) : (
+            <EmptyState title="No inactive communities">Communities you deactivate show up here.</EmptyState>
+          )
         ) : (
-          <ul className="flex flex-col divide-y divide-line rounded-[var(--radius-card)] border border-line bg-surface">
+          <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
             {data.communities.map((c) => (
               <li key={c.id}>
                 <Link
                   href={`/app/communities/${c.id}`}
-                  className="flex items-center justify-between gap-4 p-4 hover:bg-surface-sunken"
+                  className="group flex items-center gap-4 px-4 py-4 transition-colors hover:bg-surface-sunken sm:px-5"
                 >
-                  <span className="min-w-0">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-pass font-display text-lg font-semibold text-pass-ink"
+                  >
+                    {c.name.trim().charAt(0).toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{c.name}</span>
-                    {c.description && <span className="block truncate text-sm text-ink-muted">{c.description}</span>}
+                    <span className="block truncate text-sm text-ink-muted">
+                      {c.description || `Created ${formatDate(c.created_at)}`}
+                    </span>
                   </span>
                   <StatusBadge kind="connection" value={c.telegram_connected ? "CONNECTED" : "NOT_CONNECTED"} />
+                  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="hidden shrink-0 text-ink-subtle transition-transform group-hover:translate-x-0.5 sm:block">
+                    <path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </Link>
               </li>
             ))}
@@ -95,18 +122,18 @@ export function CommunityList() {
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-[var(--radius-control)] border border-line-strong px-3 py-1.5 enabled:hover:bg-surface-sunken disabled:opacity-55"
+              className={buttonClass("secondary", "sm")}
             >
               Previous
             </button>
-            <span>
+            <span className="tabular">
               Page {page} of {pages}
             </span>
             <button
               type="button"
               disabled={page >= pages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-[var(--radius-control)] border border-line-strong px-3 py-1.5 enabled:hover:bg-surface-sunken disabled:opacity-55"
+              className={buttonClass("secondary", "sm")}
             >
               Next
             </button>

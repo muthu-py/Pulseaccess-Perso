@@ -68,17 +68,19 @@ export function MemberSignupForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert tone="danger" title={formError} />}
-      <TextField label="Name" autoComplete="name" required {...bind("name")} />
-      <TextField label="Email" type="email" autoComplete="email" required {...bind("email")} />
+      <TextField label="Name" name="name" autoComplete="name" placeholder="Ravi Shah" required {...bind("name")} />
+      <TextField label="Email" name="email" type="email" autoComplete="email" placeholder="you@example.com" required {...bind("email")} />
       <TextField
         label="Phone"
+        name="phone"
         type="tel"
         autoComplete="tel"
+        placeholder="+919876543210"
         hint="With country code. Use the number on your Telegram account: it has to match when you link Telegram."
         required
         {...bind("phone")}
       />
-      <Button type="submit" loading={submitting}>
+      <Button type="submit" size="lg" className="w-full" loading={submitting}>
         Create account
       </Button>
       <p className="text-sm text-ink-muted">

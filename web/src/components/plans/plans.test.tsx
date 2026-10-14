@@ -78,11 +78,12 @@ describe("PlansSection", () => {
     });
     renderSection();
 
-    const monthly = (await screen.findByRole("row", { name: /monthly/i }));
-    expect(within(monthly).getByText("₹499.00")).toBeInTheDocument();
+    const monthly = await screen.findByRole("listitem", { name: "Monthly" });
+    expect(within(monthly).getByText("₹499")).toBeInTheDocument();
     expect(within(monthly).getByText("30 days")).toBeInTheDocument();
-    expect(within(monthly).getByText("Active")).toBeInTheDocument();
-    const yearly = screen.getByRole("row", { name: /yearly/i });
+    expect(within(monthly).getByText("On sale")).toBeInTheDocument();
+    const yearly = screen.getByRole("listitem", { name: "Yearly" });
+    expect(within(yearly).getByText("₹4,999")).toBeInTheDocument();
     expect(within(yearly).getByText("Inactive")).toBeInTheDocument();
   });
 
@@ -110,7 +111,7 @@ describe("PlansSection", () => {
     await userEvent.type(screen.getByLabelText(/^price/i), "499");
     await userEvent.click(screen.getByRole("button", { name: /create plan/i }));
 
-    expect(await screen.findByRole("row", { name: /monthly/i })).toBeInTheDocument();
+    expect(await screen.findByRole("listitem", { name: "Monthly" })).toBeInTheDocument();
     expect(bodyOf(fetchMock, "POST")).toEqual({ name: "Monthly", price: "499.00", duration_days: 30 });
     expect(screen.queryByRole("form")).not.toBeInTheDocument();
   });
@@ -177,10 +178,13 @@ describe("PlansSection", () => {
     renderSection();
 
     await userEvent.click(await screen.findByRole("button", { name: "Deactivate Monthly" }));
+    // Deactivating takes a plan off sale, so it asks first
+    const dialog = screen.getByRole("dialog", { name: /deactivate monthly/i });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByText("Inactive")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Activate Monthly" }));
-    expect(await screen.findByText("Active")).toBeInTheDocument();
+    expect(await screen.findByText("On sale")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(2);
   });
 });
