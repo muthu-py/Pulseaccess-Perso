@@ -11,6 +11,7 @@ from app.infrastructure.telegram.telegram_models import (
     TelegramChatMember,
     TelegramInviteLink,
     TelegramUser,
+    TelegramWebhookInfo,
 )
 
 
@@ -74,11 +75,20 @@ class TelegramStub:
 
     # ── Webhook management ───────────────────────────────────────────
 
-    async def set_webhook(self, url: str, secret_token: str | None = None) -> bool:
+    async def set_webhook(
+        self,
+        url: str,
+        secret_token: str | None = None,
+        allowed_updates: list[str] | None = None,
+        drop_pending_updates: bool = False,
+    ) -> bool:
         return True
 
-    async def delete_webhook(self) -> bool:
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> bool:
         return True
+
+    async def get_webhook_info(self) -> TelegramWebhookInfo:
+        return TelegramWebhookInfo()
 
     # ── Webhook verification ─────────────────────────────────────────
 

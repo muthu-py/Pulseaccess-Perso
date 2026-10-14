@@ -7,6 +7,10 @@ Business-level configuration defaults and magic values.
 CONNECTION_CODE_LENGTH = 8
 CONNECTION_CODE_EXPIRY_MINUTES = 15
 
+# Webhook — one URL per bot, registered via setWebhook
+WEBHOOK_PATH = "/api/v1/webhooks/telegram"
+WEBHOOK_ALLOWED_UPDATES = ["message", "channel_post", "my_chat_member", "chat_member"]
+
 # Deep link prefix for Telegram account linking
 DEEP_LINK_PREFIX = "link_"
 

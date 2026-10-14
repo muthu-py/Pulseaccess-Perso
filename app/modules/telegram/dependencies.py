@@ -29,7 +29,7 @@ def get_telegram_client(
     settings: Settings = Depends(get_settings),
 ) -> TelegramClient:
     """Return production driver or stub based on environment."""
-    if settings.is_development:
+    if settings.TELEGRAM_USE_STUB:
         return TelegramStub()
     return TelegramDriver(settings=settings)
 

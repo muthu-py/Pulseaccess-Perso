@@ -27,6 +27,7 @@ from app.infrastructure.telegram.telegram_models import (
     TelegramChatMember,
     TelegramInviteLink,
     TelegramUser,
+    TelegramWebhookInfo,
 )
 
 logger = get_logger(__name__)
@@ -163,16 +164,31 @@ class TelegramDriver:
 
     # ── Webhook management ───────────────────────────────────────────
 
-    async def set_webhook(self, url: str, secret_token: str | None = None) -> bool:
-        params: dict = {"url": url}
+    async def set_webhook(
+        self,
+        url: str,
+        secret_token: str | None = None,
+        allowed_updates: list[str] | None = None,
+        drop_pending_updates: bool = False,
+    ) -> bool:
+        params: dict = {"url": url, "drop_pending_updates": drop_pending_updates}
         if secret_token:
             params["secret_token"] = secret_token
+        if allowed_updates is not None:
+            params["allowed_updates"] = allowed_updates
         await self._request(tc.SET_WEBHOOK, params)
         return True
 
-    async def delete_webhook(self) -> bool:
-        await self._request(tc.DELETE_WEBHOOK)
+    async def delete_webhook(self, drop_pending_updates: bool = False) -> bool:
+        await self._request(
+            tc.DELETE_WEBHOOK,
+            {"drop_pending_updates": drop_pending_updates},
+        )
         return True
+
+    async def get_webhook_info(self) -> TelegramWebhookInfo:
+        result = await self._request(tc.GET_WEBHOOK_INFO)
+        return TelegramMapper.to_webhook_info(result)
 
     # ── Webhook verification ─────────────────────────────────────────
 

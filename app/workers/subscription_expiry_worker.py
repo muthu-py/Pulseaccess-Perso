@@ -40,7 +40,7 @@ async def run_subscription_expiry_worker() -> None:
             async with SessionLocal() as session:
                 repo = TelegramRepository(session)
 
-                if settings.is_development:
+                if settings.TELEGRAM_USE_STUB:
                     client = TelegramStub()
                 else:
                     client = TelegramDriver(settings=settings)

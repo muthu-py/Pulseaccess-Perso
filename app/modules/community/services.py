@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.logging import get_logger
 from app.modules.community.exceptions import (
     CommunityNotFoundError,
@@ -26,6 +28,9 @@ from app.modules.community.schemas import (
 )
 
 logger = get_logger(__name__)
+
+# Sentinel: "field not sent" in a partial update (distinct from None = clear)
+_UNSET: object = object()
 
 
 class CommunityService:
@@ -42,6 +47,7 @@ class CommunityService:
         self,
         creator_id: uuid.UUID,
         name: str,
+        description: str | None = None,
     ) -> CommunityResponse:
         """Create a new community for the authenticated creator."""
         clean_name = name.strip()
@@ -52,9 +58,14 @@ class CommunityService:
         community = Community(
             creator_id=creator_id,
             name=clean_name,
+            description=description,
             is_active=True,
         )
-        community = await self._repo.create(community)
+        try:
+            community = await self._repo.create(community)
+        except IntegrityError as exc:
+            # A concurrent request created the same name after our check
+            raise DuplicateCommunityNameError() from exc
 
         logger.info(
             "Community created: %s (creator=%s)",
@@ -125,8 +136,9 @@ class CommunityService:
         community_id: uuid.UUID,
         creator_id: uuid.UUID,
         name: str,
+        description: str | None | object = _UNSET,
     ) -> CommunityResponse:
-        """Update a community's name."""
+        """Update a community's name and, if given, its description."""
         community = await self._repo.get_by_id(community_id, creator_id)
         if community is None:
             raise CommunityNotFoundError()
@@ -136,7 +148,14 @@ class CommunityService:
         if await self._repo.exists_by_name(creator_id, clean_name, exclude_id=community_id):
             raise DuplicateCommunityNameError()
 
-        await self._repo.update(community_id, creator_id, {"name": clean_name})
+        values: dict = {"name": clean_name}
+        if description is not _UNSET:
+            values["description"] = description
+
+        try:
+            await self._repo.update(community_id, creator_id, values)
+        except IntegrityError as exc:
+            raise DuplicateCommunityNameError() from exc
 
         logger.info("Community updated: %s (creator=%s)", community_id, creator_id)
 
@@ -192,6 +211,7 @@ class CommunityService:
         return CommunityResponse(
             id=community.id,
             name=community.name,
+            description=community.description,
             is_active=community.is_active,
             telegram_connected=community.telegram_connected_at is not None,
             created_at=community.created_at,

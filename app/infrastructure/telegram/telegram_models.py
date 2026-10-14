@@ -65,3 +65,4 @@ class TelegramWebhookInfo(BaseModel):
     pending_update_count: int = 0
     last_error_date: int | None = None
     last_error_message: str | None = None
+    allowed_updates: list[str] = []

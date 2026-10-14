@@ -11,6 +11,7 @@ Auth guard:
 
 from __future__ import annotations
 
+import hmac
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -19,6 +20,7 @@ from app.api.dependencies import get_current_creator
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.modules.auth.schemas import BaseSuccessResponse
+from app.modules.telegram import constants as tc
 from app.modules.telegram.dependencies import get_telegram_service
 from app.modules.telegram.schemas import (
     GenerateConnectionCodeResponse,
@@ -165,7 +167,7 @@ async def generate_invite(
 # ======================================================================
 
 @router.post(
-    "/api/v1/webhooks/telegram",
+    tc.WEBHOOK_PATH,
     status_code=200,
     summary="Telegram Webhook",
     description=(
@@ -184,20 +186,15 @@ async def telegram_webhook(
     # ── Verify webhook secret FIRST (Doc 10 §8) ─────────────────────
     webhook_secret = settings.TELEGRAM_WEBHOOK_SECRET
 
-    logger.info(
-        "Received webhook secret: %r, Expected: %r",
-        x_telegram_bot_api_secret_token,
-        webhook_secret,
-    )
-
-    if webhook_secret and webhook_secret != x_telegram_bot_api_secret_token:
+    if not webhook_secret or not hmac.compare_digest(
+        webhook_secret, x_telegram_bot_api_secret_token or ""
+    ):
         logger.warning("Webhook secret mismatch — rejecting request")
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     # ── Parse payload ────────────────────────────────────────────────
     try:
         body = await request.json()
-        logger.info("Webhook body: %s", body)
     except Exception:
         raise HTTPException(status_code=400, detail="Malformed JSON payload")
 
@@ -206,7 +203,6 @@ async def telegram_webhook(
     # ── Dispatch to appropriate handler (Doc 07 §8-11) ───────────────
     try:
         if "message" in body:
-            logger.info("Calling process_webhook_message()")
             logger.debug("Webhook update %s: message", update_id)
             await service.process_webhook_message(body)
         elif "my_chat_member" in body:

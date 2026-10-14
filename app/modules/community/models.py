@@ -32,6 +32,11 @@ class Community(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        default=None,
+    )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
