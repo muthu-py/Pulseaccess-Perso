@@ -19,6 +19,11 @@ Optional: set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (in `web/.env.local`, no `@`) 
 group connection panel can name your bot. Without it the panel says "the
 PulseAccess bot".
 
+Optional public-site settings (`web/.env.local`): `NEXT_PUBLIC_SITE_URL` (used in
+the sitemap and canonical URLs, default `http://localhost:3000`) and
+`NEXT_PUBLIC_CONTACT_EMAIL` (shown on `/contact`; without it the page says no
+address is set up yet).
+
 ## Check
 
 ```bash
@@ -26,7 +31,10 @@ npm test               # unit + component tests (Vitest, jsdom)
 npm run typecheck
 npm run lint
 npm run build
+npm run e2e             # Playwright + axe, API mocked in the browser, no backend needed
 ```
+
+First E2E run: `npx playwright install chromium`. Unit tests need Node 22.22+ (jsdom 30).
 
 ## API types
 

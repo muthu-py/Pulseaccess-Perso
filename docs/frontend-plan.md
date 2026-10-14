@@ -157,7 +157,7 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
   activate/deactivate. Disabled with an explanation until the community is
   CONNECTED.
 
-### ✅ Step 7: Member flow (done, not committed)
+### ✅ Step 7: Member flow (done, committed)
 
 - `/m/signup`, `/m/login` (email OTP), `/m/connect-telegram` (phone must match).
 - `/c/[communityId]`: available plans (member login required for now) →
@@ -167,16 +167,21 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
   `/subscriptions/member/{id}` is gone; `openapi.json` was regenerated).
 - Member 401 → back to `/m/login` (no refresh yet).
 
-### Step 8: Public site
+### ✅ Step 8: Public site (done)
 
 - `/`, `/how-it-works`, `/telegram-bot` (permissions explained), `/faq`,
-  `/privacy`, `/terms`, `/contact`, with real screenshots from steps 3–7.
+  `/privacy`, `/terms`, `/contact`. No screenshots yet (needs the live stack); the home page
+  shows the real status badges. `/privacy` and `/terms` are drafts that need legal review;
+  `/contact` needs `NEXT_PUBLIC_CONTACT_EMAIL`.
 - SEO: unique titles/descriptions, sitemap, robots, `noindex` on `/app`, `/m`, `/ui`.
 
-### Step 9: Accessibility, mobile and E2E
+### ✅ Step 9: Accessibility, mobile and E2E (done)
 
-- Keyboard, focus, contrast, reduced motion, ~400px widths.
-- Playwright E2E for the creator and member flows.
+- Done: skip link, landmarks, axe checks (found and fixed two contrast failures: accent
+  `#4568e8` is now `#3d5fdc`, `--ink-subtle` darkened), no sideways scroll at 400px,
+  keyboard-only member login, reduced-motion CSS.
+- Playwright E2E (`npm run e2e`, 38 tests, desktop + 400px) for the creator and member flows,
+  with the API mocked in the browser.
 
 ### Later (when the backend has them)
 
