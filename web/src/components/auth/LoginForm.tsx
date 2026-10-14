@@ -69,6 +69,9 @@ export function LoginForm() {
         body: { identifier: identifier.trim(), otp_code: code },
       });
       signIn(result.access_token);
+      setStep("identifier");
+      setCode("");
+      setSubmitting(false);
       router.replace("/app");
     } catch (err) {
       setFormError(authErrorMessage(err));

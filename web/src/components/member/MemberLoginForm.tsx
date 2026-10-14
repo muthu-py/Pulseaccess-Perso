@@ -66,6 +66,9 @@ export function MemberLoginForm() {
         body: { email: email.trim(), otp_code: code },
       });
       signIn(result.access_token);
+      setStep("email");
+      setCode("");
+      setSubmitting(false);
       router.replace(safeNext(next, "/m/subscriptions"));
     } catch (err) {
       setFormError(authErrorMessage(err));

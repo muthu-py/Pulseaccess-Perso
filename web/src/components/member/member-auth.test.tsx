@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { session } from "@/lib/api/client";
+import { useMe } from "@/lib/member";
 import { MemberAuthProvider } from "@/lib/member-auth";
 import { safeNext } from "@/lib/safe-next";
 
@@ -160,6 +161,25 @@ describe("MemberShell", () => {
     await userEvent.click(screen.getByRole("button", { name: /log out/i }));
     expect(session.get("member")).toBeNull();
     expect(router.replace).toHaveBeenCalledWith("/m/login");
+  });
+});
+
+describe("expired member token", () => {
+  it("sends the member back to login with the page to return to", async () => {
+    session.set("old", "member");
+    mockApi({ "GET /members/me": () => respond(401, { detail: "Token expired" }) });
+    function Probe() {
+      useMe();
+      return <p>content</p>;
+    }
+    wrap(
+      <MemberShell>
+        <Probe />
+      </MemberShell>,
+    );
+
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/m/login?next=%2Fc%2Fc1"));
+    expect(session.get("member")).toBeNull();
   });
 });
 

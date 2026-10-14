@@ -56,6 +56,7 @@ export function MemberSignupForm() {
         auth: null,
         body: { name: values.name.trim(), email, phone: values.phone.replace(/[\s-]/g, "") },
       });
+      setSubmitting(false);
       router.push(`/m/login?registered=1&identifier=${encodeURIComponent(email)}${nextQuery}`);
     } catch (err) {
       if (err instanceof ApiError && Object.keys(err.fields).length > 0) setErrors(err.fields as FieldErrors);

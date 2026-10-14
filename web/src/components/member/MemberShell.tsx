@@ -54,7 +54,7 @@ export function MemberShell({ children }: { children: ReactNode }) {
           Log out
         </Button>
       </header>
-      <main className="mx-auto w-full max-w-3xl flex-1 p-6">{children}</main>
+      <main id="main" className="mx-auto w-full max-w-3xl flex-1 p-6">{children}</main>
     </div>
   );
 }

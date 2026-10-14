@@ -1,9 +1,9 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { session } from "@/lib/api/client";
+import { onMemberSessionExpired, session } from "@/lib/api/client";
 
 type MemberAuthValue = {
   signedIn: boolean;
@@ -18,6 +18,16 @@ export function MemberAuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   // The token lives in memory only, so a full page load always starts signed out.
   const [signedIn, setSignedIn] = useState(() => session.get("member") !== null);
+
+  // A 401 on any member request means the token is gone: drop to signed-out so the shell redirects to login.
+  useEffect(
+    () =>
+      onMemberSessionExpired(() => {
+        queryClient.clear();
+        setSignedIn(false);
+      }),
+    [queryClient],
+  );
 
   const signIn = useCallback((accessToken: string) => {
     session.set(accessToken, "member");

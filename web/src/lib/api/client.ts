@@ -41,6 +41,14 @@ export const session = {
   },
 };
 
+const memberExpiredListeners = new Set<() => void>();
+
+/** Called when a signed-in member's token is rejected. Members can't refresh, so they must log in again. */
+export function onMemberSessionExpired(listener: () => void): () => void {
+  memberExpiredListeners.add(listener);
+  return () => memberExpiredListeners.delete(listener);
+}
+
 type RequestOptions = {
   method?: string;
   body?: unknown;
@@ -128,6 +136,11 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
     payload = (await res.json()) as Json;
   } catch {
     payload = undefined;
+  }
+
+  if (res.status === 401 && role === "member" && session.get("member")) {
+    session.clear("member");
+    memberExpiredListeners.forEach((listener) => listener());
   }
 
   if (!res.ok) throw toApiError(res.status, payload);
