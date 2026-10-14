@@ -1,14 +1,18 @@
+import uuid
+
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_auth_service, get_current_creator
 from app.modules.auth.schemas import (
     BaseSuccessResponse,
+    CreatorResponse,
     LogoutResponse,
     RefreshResponse,
     RegisterRequest,
     RegisterResponse,
     RequestOTPRequest,
     RequestOTPResponse,
+    UpdatePhoneRequest,
     VerifyOTPRequest,
     VerifyOTPResponse,
 )
@@ -118,4 +122,23 @@ async def logout(
 ) -> BaseSuccessResponse[LogoutResponse]:
     """Logout by revoking the refresh token and clearing the cookie."""
     result = await auth_service.logout(request, response)
+    return BaseSuccessResponse(data=result)
+
+
+@router.put(
+    "/phone",
+    response_model=BaseSuccessResponse[CreatorResponse],
+    summary="Set Phone Number",
+    description=(
+        "Sets the authenticated creator's phone number (with country code). "
+        "A phone number is required before connecting Telegram."
+    ),
+)
+async def update_phone(
+    request: UpdatePhoneRequest,
+    creator_id: uuid.UUID = Depends(get_current_creator),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> BaseSuccessResponse[CreatorResponse]:
+    """Set or change the creator's phone number."""
+    result = await auth_service.update_phone(creator_id, request)
     return BaseSuccessResponse(data=result)

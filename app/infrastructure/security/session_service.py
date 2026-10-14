@@ -49,7 +49,10 @@ class SessionService:
         """
         # Generate tokens
         subject = str(creator_id)
-        access_token = self._jwt.create_access_token(subject=subject)
+        access_token = self._jwt.create_access_token(
+            subject=subject,
+            extra_claims={"role": "creator"},
+        )
         raw_refresh_token = self._jwt.create_refresh_token(subject=subject)
 
         # Hash and persist refresh token

@@ -5,7 +5,7 @@ Routers are thin: validate → authenticate → authorize → delegate to servic
 
 Auth guard:
   - Creator endpoints: Bearer JWT via get_current_creator
-  - Member endpoints: Bearer JWT via get_current_creator (member ID from token)
+  - Member endpoints: Bearer JWT via get_current_member (member ID from token)
   - Webhook endpoint: TELEGRAM_WEBHOOK_SECRET header verification only
 """
 
@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 
-from app.api.dependencies import get_current_creator
+from app.api.dependencies import get_current_creator, get_current_member
 from app.core.config import Settings, get_settings
 from app.core.logging import get_logger
 from app.modules.auth.schemas import BaseSuccessResponse
@@ -23,11 +23,11 @@ from app.modules.telegram.dependencies import get_telegram_service
 from app.modules.telegram.schemas import (
     GenerateConnectionCodeResponse,
     InviteResponse,
-    LinkStatusResponse,
-    LinkTelegramResponse,
     TelegramConnectionStatusResponse,
 )
 from app.modules.telegram.services import TelegramService
+from app.modules.telegram_connect.dependencies import get_telegram_connect_service
+from app.modules.telegram_connect.services import TelegramConnectService
 
 logger = get_logger(__name__)
 
@@ -82,6 +82,7 @@ async def get_connection_status(
 @router.delete(
     "/api/v1/telegram/communities/{community_id}",
     status_code=204,
+    response_model=None,
     summary="Disconnect Community",
     description=(
         "Disconnects Telegram from the community. Does not delete business data. "
@@ -98,45 +99,10 @@ async def disconnect_community(
 
 
 # ======================================================================
-# Member APIs — /api/v1/telegram/link/...
-# JWT Bearer required: the sub claim is used as the member_id.
+# Member APIs
+# JWT Bearer required (member login): the sub claim is the member_id.
+# Account linking lives in app.modules.telegram_connect.
 # ======================================================================
-
-@router.post(
-    "/api/v1/telegram/link",
-    response_model=BaseSuccessResponse[LinkTelegramResponse],
-    summary="Generate Telegram Link",
-    description=(
-        "Generates a Telegram deep-link for linking the authenticated "
-        "member's account. Requires a valid Bearer access token."
-    ),
-)
-async def generate_telegram_link(
-    member_id: uuid.UUID = Depends(get_current_creator),
-    service: TelegramService = Depends(get_telegram_service),
-) -> BaseSuccessResponse[LinkTelegramResponse]:
-    """Generate a Telegram deep-link for the authenticated member."""
-    result = await service.generate_link(member_id)
-    return BaseSuccessResponse(data=result)
-
-
-@router.get(
-    "/api/v1/telegram/link/status",
-    response_model=BaseSuccessResponse[LinkStatusResponse],
-    summary="Telegram Link Status",
-    description=(
-        "Returns whether the authenticated member has a linked Telegram account. "
-        "Requires a valid Bearer access token."
-    ),
-)
-async def link_status(
-    member_id: uuid.UUID = Depends(get_current_creator),
-    service: TelegramService = Depends(get_telegram_service),
-) -> BaseSuccessResponse[LinkStatusResponse]:
-    """Get the Telegram linkage status for the authenticated member."""
-    result = await service.get_link_status(member_id)
-    return BaseSuccessResponse(data=result)
-
 
 @router.post(
     "/api/v1/telegram/communities/{community_id}/invite",
@@ -150,7 +116,7 @@ async def link_status(
 )
 async def generate_invite(
     community_id: uuid.UUID,
-    member_id: uuid.UUID = Depends(get_current_creator),
+    member_id: uuid.UUID = Depends(get_current_member),
     service: TelegramService = Depends(get_telegram_service),
 ) -> BaseSuccessResponse[InviteResponse]:
     """Generate a Telegram invite for an eligible member."""
@@ -176,6 +142,7 @@ async def generate_invite(
 async def telegram_webhook(
     request: Request,
     service: TelegramService = Depends(get_telegram_service),
+    connect_service: TelegramConnectService = Depends(get_telegram_connect_service),
     settings: Settings = Depends(get_settings),
     x_telegram_bot_api_secret_token: str | None = Header(None),
 ) -> dict:
@@ -184,12 +151,6 @@ async def telegram_webhook(
     # ── Verify webhook secret FIRST (Doc 10 §8) ─────────────────────
     webhook_secret = settings.TELEGRAM_WEBHOOK_SECRET
 
-    logger.info(
-        "Received webhook secret: %r, Expected: %r",
-        x_telegram_bot_api_secret_token,
-        webhook_secret,
-    )
-
     if webhook_secret and webhook_secret != x_telegram_bot_api_secret_token:
         logger.warning("Webhook secret mismatch — rejecting request")
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -197,7 +158,6 @@ async def telegram_webhook(
     # ── Parse payload ────────────────────────────────────────────────
     try:
         body = await request.json()
-        logger.info("Webhook body: %s", body)
     except Exception:
         raise HTTPException(status_code=400, detail="Malformed JSON payload")
 
@@ -206,9 +166,8 @@ async def telegram_webhook(
     # ── Dispatch to appropriate handler (Doc 07 §8-11) ───────────────
     try:
         if "message" in body:
-            logger.info("Calling process_webhook_message()")
             logger.debug("Webhook update %s: message", update_id)
-            await service.process_webhook_message(body)
+            await connect_service.handle_private_message(body["message"])
         elif "my_chat_member" in body:
             logger.debug("Webhook update %s: my_chat_member", update_id)
             await service.process_webhook_my_chat_member(body)

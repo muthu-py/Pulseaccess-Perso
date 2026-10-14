@@ -14,6 +14,7 @@ from app.modules.payment.routers import router as webhook_router
 from app.modules.dashboard.routers import router as dashboard_router
 from app.modules.member.routers import router as member_router
 from app.modules.telegram.routers import router as telegram_router
+from app.modules.telegram_connect.routers import router as telegram_connect_router
 from app.workers.telegram_retry_worker import run_retry_worker
 from app.workers.telegram_sync_worker import run_sync_worker
 from app.workers.telegram_health_worker import run_health_worker
@@ -68,6 +69,7 @@ app.include_router(webhook_router)
 app.include_router(dashboard_router)
 app.include_router(member_router)
 app.include_router(telegram_router)
+app.include_router(telegram_connect_router)
 
 
 @app.get("/")

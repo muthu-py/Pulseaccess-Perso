@@ -23,6 +23,7 @@ from app.modules.community.schemas import (
     UpdateCommunityRequest,
 )
 from app.modules.community.services import CommunityService
+from app.modules.telegram_connect.dependencies import require_creator_telegram
 
 logger = get_logger(__name__)
 
@@ -40,12 +41,13 @@ router = APIRouter(prefix="/api/v1/communities", tags=["communities"])
     summary="Create Community",
     description=(
         "Creates a new community for the authenticated creator. "
-        "Community name must be unique per creator (3–100 characters)."
+        "Community name must be unique per creator (3–100 characters). "
+        "The creator must have connected Telegram first."
     ),
 )
 async def create_community(
     body: CreateCommunityRequest,
-    creator_id: uuid.UUID = Depends(get_current_creator),
+    creator_id: uuid.UUID = Depends(require_creator_telegram),
     service: CommunityService = Depends(get_community_service),
 ) -> BaseSuccessResponse[CommunityResponse]:
     """Create a new community."""

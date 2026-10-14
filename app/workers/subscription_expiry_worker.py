@@ -16,9 +16,8 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.infrastructure.database.session import SessionLocal
-from app.infrastructure.telegram.telegram_driver import TelegramDriver
-from app.infrastructure.telegram.telegram_stub import TelegramStub
-from app.modules.member.models import Member
+from app.infrastructure.telegram.telegram_factory import build_telegram_client
+from app.modules.plan.models import Plan
 from app.modules.subscription.models import Subscription
 from app.modules.telegram.enums import TelegramConnectionStatus
 from app.modules.telegram.repositories import TelegramRepository
@@ -40,10 +39,7 @@ async def run_subscription_expiry_worker() -> None:
             async with SessionLocal() as session:
                 repo = TelegramRepository(session)
 
-                if settings.is_development:
-                    client = TelegramStub()
-                else:
-                    client = TelegramDriver(settings=settings)
+                client = build_telegram_client(settings)
 
                 service = TelegramService(
                     repository=repo,
@@ -61,14 +57,16 @@ async def run_subscription_expiry_worker() -> None:
 
                 for sub in expired_subs:
                     try:
-                        # Get the member
-                        member = await repo.get_member_by_id(sub.member_id)
-                        if member is None or not member.telegram_user_id:
+                        # Members connect one Telegram account for all communities
+                        if await repo.get_member_telegram_id(sub.member_id) is None:
                             # No Telegram account linked — nothing to revoke
                             continue
 
-                        # Get the community from member's community_id
-                        community = await repo.get_community_by_id(member.community_id)
+                        # The plan decides which community this subscription is for
+                        plan = await session.get(Plan, sub.plan_id)
+                        if plan is None:
+                            continue
+                        community = await repo.get_community_by_id(plan.community_id)
                         if community is None:
                             continue
 
@@ -79,11 +77,11 @@ async def run_subscription_expiry_worker() -> None:
                         # Queue the removal via service (not directly via repo)
                         await service.revoke_access(
                             community_id=community.id,
-                            member_id=member.id,
+                            member_id=sub.member_id,
                         )
                         logger.info(
                             "Queued REMOVE_MEMBER for expired member %s in community %s",
-                            member.id,
+                            sub.member_id,
                             community.id,
                         )
 

@@ -4,7 +4,7 @@ import asyncio
 import re
 
 BASE_URL = "http://localhost:8000/api/v1/auth"
-DB_URL = "postgresql://postgres:muthupulseaccess@db.cqdakerdsanmyypcaqyt.supabase.co:5432/postgres"
+DB_URL = "postgresql://postgres.cqdakerdsanmyypcaqyt:Pulseaccess%40012@aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres"
 
 # Let's generate a unique username and email for this test run
 run_id = str(uuid.uuid4())[:8]

@@ -16,6 +16,7 @@ import app.modules.payment.models
 import app.modules.plan.models
 import app.modules.subscription.models
 import app.modules.telegram.models
+import app.modules.telegram_connect.models
 
 
 @pytest.fixture

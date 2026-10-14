@@ -4,13 +4,17 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
+from app.infrastructure.security.jwt_service import JWTService
 from app.infrastructure.razorpay.razorpay_interface import RazorpayClient
 from app.modules.payment.enums import PaymentOrderStatus
 from app.modules.payment.exceptions import PlanNotFoundError
 from app.modules.payment.repositories import PaymentRepository
 from app.modules.payment.services import PaymentService
+from app.modules.member.models import Member
 from app.modules.plan.models import Plan
+from app.modules.telegram_connect.enums import OwnerType
+from app.modules.telegram_connect.models import TelegramAccount
 
 
 class MockRazorpayClient(RazorpayClient):
@@ -146,12 +150,25 @@ async def test_payment_order_api_flow(
         db_session.add(plan)
         await db_session.commit()
 
-        member_id = str(uuid.uuid4())
+        # A logged-in member who has connected Telegram
+        member_id = uuid.uuid4()
+        db_session.add(Member(id=member_id, name="M", phone="+919999999999", email="m@example.com"))
+        db_session.add(TelegramAccount(
+            owner_type=OwnerType.MEMBER.value,
+            owner_id=member_id,
+            telegram_user_id="123",
+            phone="+919999999999",
+        ))
+        await db_session.commit()
+        token = JWTService(get_settings()).create_access_token(
+            subject=str(member_id), extra_claims={"role": "member"},
+        )
 
         # 1. Create order via API
         res = await async_client.post(
             "/api/v1/payments/orders",
-            json={"member_id": member_id, "plan_id": str(plan.id)},
+            json={"plan_id": str(plan.id)},
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert res.status_code == 201
         data = res.json()["data"]
@@ -159,6 +176,7 @@ async def test_payment_order_api_flow(
         assert data["amount_paise"] == 129900
         assert data["currency"] == "INR"
         assert data["status"] == "created"
+        assert data["member_id"] == str(member_id)
         assert "razorpay_order_id" in data
 
         # 2. Fetch order via API

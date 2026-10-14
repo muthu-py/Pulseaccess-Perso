@@ -13,6 +13,7 @@ from app.modules.payment.schemas import (
     PaymentOrderResponse,
 )
 from app.modules.payment.services import PaymentService
+from app.modules.telegram_connect.dependencies import require_member_telegram
 
 router = APIRouter(tags=["payments"])
 
@@ -22,15 +23,20 @@ router = APIRouter(tags=["payments"])
     response_model=BaseSuccessResponse[PaymentOrderResponse],
     status_code=status.HTTP_201_CREATED,
     summary="Create Razorpay payment order",
+    description=(
+        "Starts checkout for a plan. Requires a member login, and the member "
+        "must have connected Telegram first."
+    ),
 )
 async def create_payment_order(
     request: CreatePaymentOrderRequest,
+    member_id: uuid.UUID = Depends(require_member_telegram),
     service: PaymentService = Depends(get_payment_service),
     settings: Settings = Depends(get_settings),
 ) -> BaseSuccessResponse[PaymentOrderResponse]:
     """Generate a payment order for checkout."""
     order = await service.create_order(
-        member_id=request.member_id,
+        member_id=member_id,
         plan_id=request.plan_id,
     )
     response_data = PaymentOrderResponse.model_validate(order)

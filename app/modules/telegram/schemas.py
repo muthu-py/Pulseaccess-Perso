@@ -36,21 +36,6 @@ class TelegramConnectionStatusResponse(BaseModel):
 
 
 # ======================================================================
-# Member Linking
-# ======================================================================
-
-class LinkTelegramResponse(BaseModel):
-    """Deep link URL for linking a Telegram account."""
-    telegram_link: str
-
-
-class LinkStatusResponse(BaseModel):
-    """Whether a member's Telegram account is linked."""
-    linked: bool
-    telegram_user_id: str | None = None
-
-
-# ======================================================================
 # Invite
 # ======================================================================
 
