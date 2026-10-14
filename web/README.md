@@ -15,6 +15,10 @@ npm install
 npm run dev            # http://localhost:3000  (UI kit: /ui)
 ```
 
+Optional: set `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` (in `web/.env.local`, no `@`) so the
+group connection panel can name your bot. Without it the panel says "the
+PulseAccess bot".
+
 ## Check
 
 ```bash

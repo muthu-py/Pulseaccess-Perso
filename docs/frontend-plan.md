@@ -133,14 +133,14 @@ Built as specified below. Tests need Node ≥ 22.22 (jsdom 30); `.gitignore` now
 - Redirect new creators here until Telegram is connected (community creation
   requires it).
 
-### ✅ Step 4: Communities (done, not committed)
+### ✅ Step 4: Communities (done, committed)
 
 - `/app/communities`: Active / Inactive tabs (paginated), each row with name,
   description and connection `StatusBadge`; "New community" form
   (name, description). Explain `PENDING_TELEGRAM_CONNECTION` inline.
 - Edit name/description; activate/deactivate with a confirm dialog.
 
-### Step 5: Group connection panel
+### ✅ Step 5: Group connection panel (done, not committed)
 
 - On `/app/communities/[id]`: a step list driven by the real status.
   - NOT_CONNECTED: instructions (add `@<TELEGRAM_BOT_USERNAME>` to the group,

@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiRequest } from "@/lib/api/client";
-import type { Community, CommunityList, TelegramConnection } from "@/lib/api/types";
+import type { Community, CommunityList, GroupConnection, TelegramConnection } from "@/lib/api/types";
 
 export const creatorKeys = {
   telegram: ["creator", "telegram"] as const,
@@ -47,5 +47,14 @@ export function useCommunity(id: string) {
   return useQuery({
     queryKey: [...creatorKeys.communities, "detail", id],
     queryFn: () => apiRequest<Community>(`/communities/${id}`),
+  });
+}
+
+/** Group connection status. Polls until CONNECTED, because the backend learns about the bot from a Telegram webhook. */
+export function useGroupConnection(communityId: string) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "connection", communityId],
+    queryFn: () => apiRequest<GroupConnection>(`/telegram/communities/${communityId}/status`),
+    refetchInterval: (query) => (query.state.data?.status === "CONNECTED" ? false : 4000),
   });
 }

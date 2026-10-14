@@ -16,6 +16,7 @@ import { creatorKeys, useCommunity } from "@/lib/creator";
 import { errorText } from "@/lib/errors";
 
 import { CommunityForm } from "./CommunityForm";
+import { ConnectionPanel } from "./ConnectionPanel";
 
 export function CommunityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -85,6 +86,8 @@ export function CommunityDetail() {
       </div>
 
       {actionError && <Alert tone="danger" title={actionError} />}
+
+      <ConnectionPanel communityId={community.id} />
 
       {editing ? (
         <CommunityForm

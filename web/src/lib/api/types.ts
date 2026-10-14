@@ -11,3 +11,4 @@ export type TelegramConnection = Schemas["TelegramConnectionResponse"];
 export type TelegramLink = Schemas["ConnectTelegramResponse"];
 export type Community = Schemas["CommunityResponse"];
 export type CommunityList = Schemas["CommunityListResponse"];
+export type GroupConnection = Schemas["TelegramConnectionStatusResponse"];
