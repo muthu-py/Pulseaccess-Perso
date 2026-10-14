@@ -26,6 +26,7 @@ from app.infrastructure.telegram.telegram_exceptions import (
     TelegramException,
     TelegramNotFoundException,
     TelegramPermissionException,
+    TelegramRateLimitException,
 )
 from app.infrastructure.telegram.telegram_interface import TelegramClient
 from app.infrastructure.telegram.telegram_models import TelegramChatMember
@@ -37,8 +38,11 @@ from app.modules.telegram.enums import (
     TelegramOperationType,
 )
 from app.modules.telegram.exceptions import (
+    BotCannotRemoveMemberError,
     CommunityNotConnectedError,
     CommunityNotFoundError,
+    MemberNotInCommunityError,
+    MemberPlanStillActiveError,
     SubscriptionInactiveError,
     TelegramNotLinkedError,
     TelegramOperationFailedError,
@@ -47,11 +51,25 @@ from app.modules.telegram.exceptions import (
 from app.modules.telegram.repositories import TelegramRepository
 from app.modules.telegram.schemas import (
     InviteResponse,
+    MemberRemovalResponse,
     TelegramConnectionStatusResponse,
 )
 
 logger = get_logger(__name__)
 
+_DEFAULT_BACKOFF = [timedelta(minutes=m) for m in (1, 5, 15, 30, 60)]
+_BACKOFF_UNITS = {"s": "seconds", "m": "minutes", "h": "hours"}
+
+
+def _parse_backoff(value: str) -> list[timedelta]:
+    """Parse TELEGRAM_RETRY_BACKOFF such as "1m,5m,15m,30m,60m" (units s, m, h)."""
+    steps: list[timedelta] = []
+    for part in value.split(","):
+        part = part.strip().lower()
+        if len(part) < 2 or part[-1] not in _BACKOFF_UNITS or not part[:-1].isdigit():
+            return _DEFAULT_BACKOFF
+        steps.append(timedelta(**{_BACKOFF_UNITS[part[-1]]: int(part[:-1])}))
+    return steps or _DEFAULT_BACKOFF
 
 
 class TelegramService:
@@ -308,6 +326,70 @@ class TelegramService:
             community_id,
         )
 
+    async def remove_expired_member(
+        self,
+        community_id: uuid.UUID,
+        member_id: uuid.UUID,
+        creator_id: uuid.UUID,
+    ) -> MemberRemovalResponse:
+        """Creator removes a member whose plan has ended, without waiting for the daily check.
+
+        Only members with no active plan in this community can be removed.
+        The Telegram removal runs now; if Telegram is unreachable it is queued
+        for the retry worker instead.
+        """
+        community = await self._repo.get_community_by_id(community_id)
+        if community is None:
+            raise CommunityNotFoundError()
+        if community.creator_id != creator_id:
+            raise UnauthorizedCommunityAccessError()
+
+        membership = await self._repo.get_membership(member_id, community_id)
+        if membership is None:
+            raise MemberNotInCommunityError()
+        if await self._repo.has_active_subscription_in_community(member_id, community_id):
+            raise MemberPlanStillActiveError()
+
+        def result(removal: str) -> MemberRemovalResponse:
+            return MemberRemovalResponse(
+                member_id=member_id,
+                community_id=community_id,
+                membership_status=MembershipStatus.REMOVED.value,
+                telegram_removal=removal,
+            )
+
+        if membership.status == MembershipStatus.REMOVED.value:
+            return result("ALREADY_REMOVED")
+
+        removal = "NOT_NEEDED"
+        telegram_user_id = await self._repo.get_member_telegram_id(member_id)
+        if community.telegram_chat_id and telegram_user_id:
+            try:
+                await self._remove_from_group(community, telegram_user_id)
+                removal = "DONE"
+            except (TelegramPermissionException, TelegramNotFoundException) as exc:
+                logger.warning(
+                    "Bot could not remove member %s from community %s: %s",
+                    member_id, community_id, exc,
+                )
+                raise BotCannotRemoveMemberError() from exc
+            except TelegramException as exc:
+                logger.warning(
+                    "Telegram unavailable removing member %s from community %s; queued: %s",
+                    member_id, community_id, exc,
+                )
+                await self.revoke_access(community_id, member_id)
+                removal = "QUEUED"
+
+        await self._repo.set_membership_status(
+            member_id, community_id, MembershipStatus.REMOVED,
+        )
+        logger.info(
+            "Creator %s removed member %s from community %s (%s)",
+            creator_id, member_id, community_id, removal,
+        )
+        return result(removal)
+
     async def revoke_ended_access(self) -> int:
         """Handle each expired / cancelled subscription once.
 
@@ -348,19 +430,17 @@ class TelegramService:
 
     async def execute_operation(self, operation_id: uuid.UUID) -> None:
         """Execute a single queued Telegram operation."""
-        from app.modules.telegram.models import TelegramOperation
-        from sqlalchemy import select
-
-        stmt = select(TelegramOperation).where(TelegramOperation.id == operation_id)
-        result = await self._repo._session.execute(stmt)
-        op = result.scalar_one_or_none()
-
-        if op is None or op.status == TelegramOperationStatus.COMPLETED.value:
+        op = await self._repo.get_operation(operation_id)
+        if op is None or op.status in (
+            TelegramOperationStatus.COMPLETED.value,
+            TelegramOperationStatus.FAILED.value,
+        ):
             return
 
-        await self._repo.update_operation_status(
-            operation_id,
-            TelegramOperationStatus.PROCESSING,
+        # The lease: if this attempt never finishes, the op is picked up again after it.
+        timeout = getattr(self._settings, "TELEGRAM_PROCESSING_TIMEOUT", 300)
+        await self._repo.claim_operation(
+            operation_id, datetime.now(timezone.utc) + timedelta(seconds=timeout),
         )
 
         try:
@@ -383,25 +463,42 @@ class TelegramService:
             await self._repo.mark_failed(operation_id, error=str(exc))
             logger.warning("Operation %s permanently failed: %s", operation_id, exc)
 
-        except TelegramException as exc:
-            # Transient failure — schedule retry
+        except Exception as exc:
+            # Transient Telegram error, or a bug: retry a bounded number of times.
+            if not isinstance(exc, TelegramException):
+                logger.exception("Operation %s raised an unexpected error", operation_id)
             max_retries = getattr(self._settings, "TELEGRAM_MAX_RETRIES", 5)
             if op.retry_count >= max_retries:
                 await self._repo.mark_failed(operation_id, error=str(exc))
                 logger.error("Operation %s exhausted retries", operation_id)
             else:
-                backoff_minutes = [1, 5, 15, 30, 60]
-                delay = backoff_minutes[min(op.retry_count, len(backoff_minutes) - 1)]
-                scheduled = datetime.now(timezone.utc) + timedelta(minutes=delay)
+                delay = self._retry_delay(op.retry_count, exc)
+                scheduled = datetime.now(timezone.utc) + delay
                 await self._repo.increment_retry(operation_id, scheduled, error=str(exc))
                 logger.info(
-                    "Operation %s scheduled for retry in %d min",
+                    "Operation %s scheduled for retry in %d s",
                     operation_id,
-                    delay,
+                    int(delay.total_seconds()),
                 )
+
+    def _retry_delay(self, retry_count: int, exc: Exception) -> timedelta:
+        """Next delay from TELEGRAM_RETRY_BACKOFF; never sooner than Telegram's retry_after."""
+        steps = _parse_backoff(getattr(self._settings, "TELEGRAM_RETRY_BACKOFF", ""))
+        delay = steps[min(retry_count, len(steps) - 1)]
+        if isinstance(exc, TelegramRateLimitException) and exc.retry_after:
+            delay = max(delay, timedelta(seconds=int(exc.retry_after)))
+        return delay
 
     async def _execute_remove_member(self, op: Any) -> None:
         """Remove a member from a Telegram group (ban then unban)."""
+        # The member may have bought or renewed a plan after this was queued.
+        if await self._repo.has_active_subscription_in_community(op.member_id, op.community_id):
+            logger.info(
+                "Skipping removal of member %s from community %s: plan active again",
+                op.member_id, op.community_id,
+            )
+            return
+
         community = await self._repo.get_community_by_id(op.community_id)
         if community is None or not community.telegram_chat_id:
             raise TelegramNotFoundException("Community or chat not found")
@@ -410,6 +507,10 @@ class TelegramService:
         if telegram_user_id is None:
             raise TelegramNotFoundException("Member or telegram ID not found")
 
+        await self._remove_from_group(community, telegram_user_id)
+
+    async def _remove_from_group(self, community: Any, telegram_user_id: str) -> None:
+        """Ban then unban (so they can rejoin after renewing), then tell them why."""
         await self._telegram.ban_member(
             community.telegram_chat_id,
             int(telegram_user_id),
@@ -417,6 +518,9 @@ class TelegramService:
         await self._telegram.unban_member(
             community.telegram_chat_id,
             int(telegram_user_id),
+        )
+        await self._send_private(
+            telegram_user_id, tc.MSG_ACCESS_ENDED.format(community=community.name),
         )
 
     async def _execute_verify_connection(self, op: Any) -> None:
@@ -514,6 +618,41 @@ class TelegramService:
     ) -> None:
         """Set CONNECTED / NEEDS_ATTENTION from the bot's actual rights."""
         member = await self._fetch_bot_member(chat_id, bot_user_id, reported_member)
+        await self._apply_bot_rights(community, chat_id, member, title)
+
+    async def verify_connection(self, community: Any, bot_user_id: int) -> None:
+        """Sync worker: re-check the bot's rights in a linked group.
+
+        Moves CONNECTED → NEEDS_ATTENTION when the bot was removed or lost its
+        rights, and NEEDS_ATTENTION → CONNECTED once they are back. Temporary
+        errors (network, rate limit, Telegram 5xx, our own token) change nothing.
+        """
+        chat_id = community.telegram_chat_id
+        try:
+            member = await self._telegram.get_chat_member(chat_id, bot_user_id)
+        except (TelegramPermissionException, TelegramNotFoundException) as exc:
+            logger.warning("Sync: bot has no access to chat %s: %s", chat_id, exc)
+            member = None
+        except TelegramException as exc:
+            if not str(exc).startswith("HTTP 400"):
+                logger.warning("Sync: could not check chat %s: %s", chat_id, exc)
+                return
+            # e.g. "chat not found": the group is gone or the bot can't see it.
+            logger.warning("Sync: bot has no access to chat %s: %s", chat_id, exc)
+            member = None
+        await self._apply_bot_rights(community, chat_id, member, None)
+
+    async def _apply_bot_rights(
+        self,
+        community: Any,
+        chat_id: str,
+        member: TelegramChatMember | None,
+        title: str | None,
+    ) -> None:
+        """Store CONNECTED / NEEDS_ATTENTION and tell the creator when it changes.
+
+        title is the group's title from a webhook; None means the sync check.
+        """
         has_rights = (
             member is not None
             and member.status == "administrator"
@@ -527,10 +666,12 @@ class TelegramService:
                 await self._repo.mark_connected(community.id, chat_id)
                 community.telegram_connection_status = TelegramConnectionStatus.CONNECTED.value
                 logger.info("Community %s CONNECTED to chat %s", community.id, chat_id)
-                await self._notify_creator(
-                    community.creator_id,
-                    tc.MSG_GROUP_CONNECTED.format(title=title, community=community.name),
+                text = (
+                    tc.MSG_GROUP_CONNECTED.format(title=title, community=community.name)
+                    if title is not None
+                    else tc.MSG_GROUP_ACCESS_RESTORED.format(community=community.name)
                 )
+                await self._notify_creator(community.creator_id, text)
             return
 
         if previous != TelegramConnectionStatus.NEEDS_ATTENTION.value:
@@ -538,14 +679,19 @@ class TelegramService:
                 community.id, TelegramConnectionStatus.NEEDS_ATTENTION,
             )
             community.telegram_connection_status = TelegramConnectionStatus.NEEDS_ATTENTION.value
-            logger.info(
+            # Links the bot made may be revoked with its rights; make a fresh one later.
+            await self._repo.save_join_link(community.id, None)
+            community.telegram_join_link = None
+            logger.warning(
                 "Community %s NEEDS_ATTENTION: bot lacks admin rights in chat %s",
                 community.id, chat_id,
             )
-            await self._notify_creator(
-                community.creator_id,
-                tc.MSG_GROUP_NEEDS_ADMIN.format(title=title, community=community.name),
+            text = (
+                tc.MSG_GROUP_NEEDS_ADMIN.format(title=title, community=community.name)
+                if title is not None
+                else tc.MSG_GROUP_ACCESS_LOST.format(community=community.name)
             )
+            await self._notify_creator(community.creator_id, text)
 
     async def _fetch_bot_member(
         self,

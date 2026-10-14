@@ -20,6 +20,30 @@ from app.modules.telegram.services import TelegramService
 logger = get_logger(__name__)
 
 
+async def run_retry_cycle(session, client) -> None:
+    """Run every due operation, committing each one on its own."""
+    settings = get_settings()
+    repo = TelegramRepository(session)
+    service = TelegramService(
+        repository=repo,
+        telegram_client=client,
+        settings=settings,
+    )
+
+    operation_ids = [op.id for op in await repo.find_pending()]
+
+    for operation_id in operation_ids:
+        try:
+            await service.execute_operation(operation_id)
+            await session.commit()
+        except Exception:
+            # Leaves the op as it was; it is retried on a later pass.
+            await session.rollback()
+            logger.exception(
+                "Retry worker failed on operation %s", operation_id,
+            )
+
+
 async def run_retry_worker() -> None:
     """Continuously process pending Telegram operations."""
     settings = get_settings()
@@ -33,27 +57,7 @@ async def run_retry_worker() -> None:
     while True:
         try:
             async with SessionLocal() as session:
-                repo = TelegramRepository(session)
-
-                client = build_telegram_client(settings)
-
-                service = TelegramService(
-                    repository=repo,
-                    telegram_client=client,
-                    settings=settings,
-                )
-
-                operations = await repo.find_pending()
-
-                for op in operations:
-                    try:
-                        await service.execute_operation(op.id)
-                    except Exception:
-                        logger.exception(
-                            "Retry worker failed on operation %s", op.id,
-                        )
-
-                await session.commit()
+                await run_retry_cycle(session, build_telegram_client(settings))
 
         except Exception:
             logger.exception("Retry worker cycle error")

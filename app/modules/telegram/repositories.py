@@ -357,7 +357,26 @@ class TelegramRepository:
         )
         await self._session.execute(stmt)
 
+    async def get_operation(self, operation_id: uuid.UUID) -> TelegramOperation | None:
+        result = await self._session.execute(
+            select(TelegramOperation).where(TelegramOperation.id == operation_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def claim_operation(self, operation_id: uuid.UUID, lease_until: datetime) -> None:
+        """Mark PROCESSING; if the worker dies, the op is picked up again after lease_until."""
+        stmt = (
+            update(TelegramOperation)
+            .where(TelegramOperation.id == operation_id)
+            .values(
+                status=TelegramOperationStatus.PROCESSING.value,
+                scheduled_at=lease_until,
+            )
+        )
+        await self._session.execute(stmt)
+
     async def find_pending(self) -> Sequence[TelegramOperation]:
+        """Due PENDING / RETRYING ops, plus PROCESSING ops whose lease ran out."""
         now = datetime.now(timezone.utc)
         stmt = (
             select(TelegramOperation)
@@ -365,6 +384,7 @@ class TelegramRepository:
                 TelegramOperation.status.in_([
                     TelegramOperationStatus.PENDING.value,
                     TelegramOperationStatus.RETRYING.value,
+                    TelegramOperationStatus.PROCESSING.value,
                 ]),
                 (TelegramOperation.scheduled_at.is_(None))
                 | (TelegramOperation.scheduled_at <= now),
@@ -375,25 +395,14 @@ class TelegramRepository:
         result = await self._session.execute(stmt)
         return result.scalars().all()
 
-    async def find_retryable(self, max_retries: int = 5) -> Sequence[TelegramOperation]:
-        now = datetime.now(timezone.utc)
-        stmt = (
-            select(TelegramOperation)
-            .where(
-                TelegramOperation.status == TelegramOperationStatus.RETRYING.value,
-                TelegramOperation.retry_count < max_retries,
-                (TelegramOperation.scheduled_at.is_(None))
-                | (TelegramOperation.scheduled_at <= now),
-            )
-            .order_by(TelegramOperation.scheduled_at.asc())
-            .limit(50)
-        )
-        result = await self._session.execute(stmt)
-        return result.scalars().all()
-
-    async def get_connected_communities(self) -> Sequence[Community]:
+    async def get_communities_to_verify(self) -> Sequence[Community]:
+        """Linked communities the sync worker re-checks, including ones that may recover."""
         stmt = select(Community).where(
-            Community.telegram_connection_status == TelegramConnectionStatus.CONNECTED.value,
+            Community.telegram_chat_id.is_not(None),
+            Community.telegram_connection_status.in_([
+                TelegramConnectionStatus.CONNECTED.value,
+                TelegramConnectionStatus.NEEDS_ATTENTION.value,
+            ]),
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()

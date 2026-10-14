@@ -1,7 +1,7 @@
 """Telegram Health Worker — monitors bot connectivity.
 
-Periodically calls TelegramService.health_check() and logs the
-availability status of the Telegram Bot API (Doc 08 §9).
+Periodically calls TelegramService.health_check(). Logs only when the
+Telegram Bot API is unavailable; a healthy check prints nothing (Doc 08 §9).
 
 Workers MUST call services, NOT infrastructure or repositories directly.
 """
@@ -28,7 +28,7 @@ async def run_health_worker() -> None:
         logger.info("Telegram health worker disabled")
         return
 
-    logger.info("Telegram health worker started")
+    logger.debug("Telegram health worker started")
 
     while True:
         try:
@@ -45,9 +45,7 @@ async def run_health_worker() -> None:
 
                 healthy = await service.health_check()
 
-                if healthy:
-                    logger.debug("Telegram health check: OK")
-                else:
+                if not healthy:
                     logger.warning("Telegram health check: FAILED — bot API unavailable")
 
         except Exception:

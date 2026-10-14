@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     TELEGRAM_SYNC_ENABLED: bool = True
     TELEGRAM_HEALTH_ENABLED: bool = True
 
+    # Subscription expiry job: runs at startup, then every N hours
+    SUBSCRIPTION_EXPIRY_INTERVAL_HOURS: int = 24
+
     # ------------------------------------------------------------------
     # Razorpay Integration
     # ------------------------------------------------------------------

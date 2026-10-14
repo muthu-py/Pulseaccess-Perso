@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import get_logger, setup_logging
+from app.infrastructure.telegram.telegram_factory import close_telegram_clients
 from app.modules.auth.routers import router as auth_router
 from app.modules.community.routers import router as community_router
 from app.modules.plan.routers import router as plan_router
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("Background workers stopped")
+    await close_telegram_clients()
 
 
 app = FastAPI(
