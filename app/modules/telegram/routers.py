@@ -26,6 +26,7 @@ from app.modules.telegram import constants as tc
 from app.modules.telegram.dependencies import get_telegram_service
 from app.modules.telegram.schemas import (
     InviteResponse,
+    MemberRemovalResponse,
     TelegramConnectionStatusResponse,
 )
 from app.modules.telegram.services import TelegramService
@@ -78,6 +79,29 @@ async def disconnect_community(
 ) -> None:
     """Disconnect Telegram from a community."""
     await service.disconnect_community(community_id, creator_id)
+
+
+@router.delete(
+    "/api/v1/telegram/communities/{community_id}/members/{member_id}",
+    response_model=BaseSuccessResponse[MemberRemovalResponse],
+    summary="Remove an expired member",
+    description=(
+        "Removes a member whose plan in this community has ended from the "
+        "Telegram group right away, instead of waiting for the daily expiry "
+        "check. Returns 409 while the member still has an active plan. The "
+        "member can rejoin after buying a new plan. Requires a valid Bearer "
+        "access token. Creator must own the community."
+    ),
+)
+async def remove_expired_member(
+    community_id: uuid.UUID,
+    member_id: uuid.UUID,
+    creator_id: uuid.UUID = Depends(get_current_creator),
+    service: TelegramService = Depends(get_telegram_service),
+) -> BaseSuccessResponse[MemberRemovalResponse]:
+    """Remove a member whose plan ended from the community's group."""
+    result = await service.remove_expired_member(community_id, member_id, creator_id)
+    return BaseSuccessResponse(data=result)
 
 
 # ======================================================================

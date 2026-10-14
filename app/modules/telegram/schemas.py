@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,6 +33,25 @@ class InviteResponse(BaseModel):
     """The community's join-request link (no expiry; the bot checks each request)."""
     invite_link: str
     expires_at: datetime | None = None
+
+
+# ======================================================================
+# Member removal
+# ======================================================================
+
+class MemberRemovalResponse(BaseModel):
+    """Result of removing a member whose plan ended.
+
+    telegram_removal:
+      DONE            removed from the Telegram group now
+      QUEUED          Telegram was unreachable; the removal is retried in the background
+      NOT_NEEDED      no linked group or no Telegram account, so nothing to do there
+      ALREADY_REMOVED the member was already removed earlier
+    """
+    member_id: uuid.UUID
+    community_id: uuid.UUID
+    membership_status: str
+    telegram_removal: Literal["DONE", "QUEUED", "NOT_NEEDED", "ALREADY_REMOVED"]
 
 
 # ======================================================================

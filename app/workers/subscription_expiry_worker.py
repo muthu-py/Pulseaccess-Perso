@@ -1,6 +1,7 @@
 """Subscription Expiry Worker — ends access when a plan runs out.
 
-Each cycle:
+Runs once at startup, then every SUBSCRIPTION_EXPIRY_INTERVAL_HOURS
+(default 24). Each cycle:
   1. Marks ACTIVE subscriptions past their end time as EXPIRED.
   2. Handles each expired / cancelled subscription once: queues a
      REMOVE_MEMBER operation unless another of the member's plans in that
@@ -24,8 +25,6 @@ from app.modules.telegram.services import TelegramService
 
 logger = get_logger(__name__)
 
-INTERVAL_SECONDS = 300  # every 5 minutes
-
 
 async def run_expiry_cycle(session) -> tuple[int, int]:
     """One pass; returns (subscriptions expired, removals queued)."""
@@ -43,7 +42,8 @@ async def run_expiry_cycle(session) -> tuple[int, int]:
 
 async def run_subscription_expiry_worker() -> None:
     """Expire due subscriptions and queue group removals."""
-    logger.info("Subscription expiry worker started")
+    interval_seconds = get_settings().SUBSCRIPTION_EXPIRY_INTERVAL_HOURS * 3600
+    logger.debug("Subscription expiry worker started")
 
     while True:
         try:
@@ -58,4 +58,4 @@ async def run_subscription_expiry_worker() -> None:
         except Exception:
             logger.exception("Subscription expiry worker cycle error")
 
-        await asyncio.sleep(INTERVAL_SECONDS)
+        await asyncio.sleep(interval_seconds)

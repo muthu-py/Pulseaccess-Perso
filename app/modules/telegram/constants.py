@@ -25,6 +25,15 @@ MSG_GROUP_NEEDS_ADMIN = (
     "• Ban users\n"
     "Promote me and the connection completes automatically."
 )
+# Sent by the periodic sync check, which has no group title to hand.
+MSG_GROUP_ACCESS_LOST = (
+    "⚠️ I can no longer manage the Telegram group of your community “{community}”. "
+    "Make sure I'm still in the group as an administrator with these permissions:\n"
+    "• Invite users via link\n"
+    "• Ban users\n"
+    "New members can't join until this is fixed."
+)
+MSG_GROUP_ACCESS_RESTORED = "✅ I can manage the Telegram group of your community “{community}” again."
 MSG_GROUP_NO_PENDING = (
     "I was added to “{title}”, but you have no PulseAccess community waiting for a "
     "Telegram group. Create the community first, then remove and re-add me."
@@ -45,6 +54,10 @@ MSG_PAID_JOIN = (
     "Tap the button below, then “Request to join”. I'll let you in right away."
 )
 MSG_PAID_ALREADY_IN = "✅ Payment received. Your access to “{community}” has been extended."
+MSG_ACCESS_ENDED = (
+    "Your plan for “{community}” has ended, so you've been removed from its "
+    "Telegram group. Renew your plan on the PulseAccess site to join again."
+)
 MSG_JOIN_DECLINED = (
     "I couldn't let you into “{community}” because this Telegram account has no "
     "active plan for it. Buy or renew a plan on the PulseAccess site, then tap the "

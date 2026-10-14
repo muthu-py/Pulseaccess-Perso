@@ -57,6 +57,10 @@ class TelegramDriver:
             ),
         )
 
+    async def aclose(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        await self._client.aclose()
+
     # ── Internal helpers ─────────────────────────────────────────────
 
     async def _request(

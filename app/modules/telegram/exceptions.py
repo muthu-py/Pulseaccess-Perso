@@ -61,6 +61,27 @@ class SubscriptionInactiveError(PulseAccessException):
     message = "An active subscription is required."
 
 
+class MemberNotInCommunityError(PulseAccessException):
+    status_code = 404
+    error_code = "MEMBER_NOT_IN_COMMUNITY"
+    message = "This member has never had a plan in this community."
+
+
+class MemberPlanStillActiveError(PulseAccessException):
+    status_code = 409
+    error_code = "MEMBER_PLAN_ACTIVE"
+    message = "This member still has an active plan. They can be removed once it expires."
+
+
+class BotCannotRemoveMemberError(PulseAccessException):
+    status_code = 409
+    error_code = "BOT_CANNOT_REMOVE_MEMBER"
+    message = (
+        "The bot couldn't remove this member. Make sure it is an admin of the "
+        "group with the Ban users permission."
+    )
+
+
 # ======================================================================
 # Connection Code Exceptions
 # ======================================================================
