@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
     RAZORPAY_API_BASE_URL: str = "https://api.razorpay.com/v1"
+    # Payment links expire after this long (Razorpay minimum: 15 minutes)
+    RAZORPAY_PAYMENT_LINK_EXPIRY_MINUTES: int = 30
+    # Optional page Razorpay redirects the member to after paying
+    RAZORPAY_PAYMENT_CALLBACK_URL: str = ""
 
     # ------------------------------------------------------------------
     # Logging

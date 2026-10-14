@@ -16,6 +16,25 @@ class RazorpayClient(Protocol):
         """Create a payment order on Razorpay."""
         ...
 
+    async def create_payment_link(
+        self,
+        *,
+        amount_paise: int,
+        currency: str,
+        reference_id: str,
+        description: str,
+        customer: dict[str, str],
+        expire_by: int,
+        notes: dict[str, Any] | None = None,
+        callback_url: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a single-use Payment Link; returns id, short_url, status."""
+        ...
+
+    async def fetch_payment_link(self, payment_link_id: str) -> dict[str, Any]:
+        """Fetch a Payment Link by id."""
+        ...
+
     def verify_webhook_signature(
         self,
         payload_bytes: bytes,

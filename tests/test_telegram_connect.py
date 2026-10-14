@@ -130,7 +130,7 @@ async def test_member_connects_telegram_then_can_pay(
 
     # Not connected yet → paying is blocked
     res = await async_client.post(
-        "/api/v1/payments/orders", json={"plan_id": str(uuid.uuid4())}, headers=headers,
+        f"/api/v1/plans/{uuid.uuid4()}/payment-link", headers=headers,
     )
     assert res.status_code == 403
     assert res.json()["error_code"] == "TELEGRAM_NOT_CONNECTED"
@@ -156,7 +156,7 @@ async def test_member_connects_telegram_then_can_pay(
 
     # Guard now lets the member through (plan doesn't exist → 404, not 403)
     res = await async_client.post(
-        "/api/v1/payments/orders", json={"plan_id": str(uuid.uuid4())}, headers=headers,
+        f"/api/v1/plans/{uuid.uuid4()}/payment-link", headers=headers,
     )
     assert res.status_code == 404
 

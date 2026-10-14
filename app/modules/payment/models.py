@@ -12,7 +12,11 @@ from app.modules.payment.enums import PaymentEventStatus, PaymentOrderStatus
 
 
 class PaymentOrder(Base):
-    """Represents a Razorpay payment order created for a plan purchase."""
+    """One purchase attempt of a plan by a member.
+
+    Each attempt gets its own single-use Razorpay Payment Link; the webhook
+    marks it PAID and activates the member's subscription.
+    """
 
     __tablename__ = "payment_orders"
 
@@ -21,10 +25,28 @@ class PaymentOrder(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    razorpay_order_id: Mapped[str] = mapped_column(
+    # Set for legacy Checkout orders; payment-link purchases leave it empty.
+    razorpay_order_id: Mapped[str | None] = mapped_column(
         String(100),
         unique=True,
-        nullable=False,
+        nullable=True,
+        default=None,
+    )
+    razorpay_payment_link_id: Mapped[str | None] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=True,
+        default=None,
+    )
+    payment_link_url: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        default=None,
+    )
+    razorpay_payment_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        default=None,
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -50,6 +72,16 @@ class PaymentOrder(Base):
     )
     receipt_id: Mapped[str | None] = mapped_column(
         String(100),
+        nullable=True,
+        default=None,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
         default=None,
     )

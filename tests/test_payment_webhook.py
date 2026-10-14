@@ -64,7 +64,7 @@ async def test_webhook_payment_captured_success(
         plan_id = uuid.uuid4()
         rzp_order_id = "order_test_capture_001"
 
-        plan = Plan(id=plan_id, community_id=uuid.uuid4(), name="Pro Plan", price=499.0)
+        plan = Plan(id=plan_id, community_id=uuid.uuid4(), name="Pro Plan", price_paise=49900)
         order = PaymentOrder(
             id=uuid.uuid4(),
             razorpay_order_id=rzp_order_id,
@@ -176,7 +176,7 @@ async def test_webhook_idempotency_duplicate_replay(
         plan_id = uuid.uuid4()
         rzp_order_id = "order_test_replay_002"
 
-        plan = Plan(id=plan_id, community_id=uuid.uuid4(), name="VIP Plan", price=999.0)
+        plan = Plan(id=plan_id, community_id=uuid.uuid4(), name="VIP Plan", price_paise=99900)
         order = PaymentOrder(
             id=uuid.uuid4(),
             razorpay_order_id=rzp_order_id,

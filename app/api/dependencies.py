@@ -21,7 +21,6 @@ from app.modules.auth.services import AuthService
 
 # Existing module services — preserved
 from app.modules.community.services import CommunityService
-from app.modules.plan.services import PlanService
 from app.modules.subscription.services import SubscriptionService
 from app.infrastructure.telegram.telegram_interface import TelegramClient
 from app.infrastructure.telegram.telegram_stub import TelegramStub
@@ -221,10 +220,6 @@ def get_community_service(
     from app.modules.community.repositories import CommunityRepository
 
     return CommunityService(repository=CommunityRepository(session=session))
-
-
-def get_plan_service() -> PlanService:
-    return PlanService()
 
 
 def get_subscription_service() -> SubscriptionService:
