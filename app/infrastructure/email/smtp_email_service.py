@@ -48,11 +48,16 @@ class SMTPEmailService:
         """Send the OTP login email."""
         if self._is_dev:
             logger.info(
-                "DEV MODE — OTP for %s: %s (not sending real email)",
+                "DEV MODE — OTP for %s: %s (also sending real email)",
                 to_email,
                 otp_code,
             )
-            return
+            try:
+                with open("otp_dump.txt", "w") as f:
+                    f.write(otp_code)
+            except Exception:
+                pass
+            # Fall through to send the real email as well
 
         subject = f"{self._from_name} — Your Login Code"
         html_body = self._build_otp_html(

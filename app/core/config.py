@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,6 +67,51 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_USE_TLS: bool = True
+
+    # ------------------------------------------------------------------
+    # Telegram Integration
+    # ------------------------------------------------------------------
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_BOT_USERNAME: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_API_BASE_URL: str = "https://api.telegram.org"
+    # Public base URL Telegram posts updates to (e.g. an ngrok https URL)
+    TELEGRAM_WEBHOOK_BASE_URL: str = ""
+    # When true, TelegramStub replaces the real driver (no Bot API calls)
+    TELEGRAM_USE_STUB: bool = False
+
+    # Retry configuration
+    TELEGRAM_MAX_RETRIES: int = 5
+    TELEGRAM_RETRY_BACKOFF: str = "1m,5m,15m,30m,60m"
+    TELEGRAM_PROCESSING_TIMEOUT: int = 300  # seconds
+
+    # HTTP timeouts (seconds)
+    TELEGRAM_HTTP_TIMEOUT: int = 30
+    TELEGRAM_CONNECT_TIMEOUT: int = 10
+    TELEGRAM_READ_TIMEOUT: int = 30
+
+    # Worker toggles
+    TELEGRAM_RETRY_ENABLED: bool = True
+    TELEGRAM_SYNC_ENABLED: bool = True
+    TELEGRAM_HEALTH_ENABLED: bool = True
+
+    # Subscription expiry job: runs at startup, then every N hours
+    SUBSCRIPTION_EXPIRY_INTERVAL_HOURS: int = 24
+
+    # ------------------------------------------------------------------
+    # Razorpay Integration
+    # ------------------------------------------------------------------
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = Field(
+        "",
+        validation_alias=AliasChoices("RAZORPAY_KEY_SECRET", "RPAY_KEY_SECRET"),
+    )
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_API_BASE_URL: str = "https://api.razorpay.com/v1"
+    # Payment links expire after this long (Razorpay minimum: 15 minutes)
+    RAZORPAY_PAYMENT_LINK_EXPIRY_MINUTES: int = 30
+    # Optional page Razorpay redirects the member to after paying
+    RAZORPAY_PAYMENT_CALLBACK_URL: str = ""
 
     # ------------------------------------------------------------------
     # Logging

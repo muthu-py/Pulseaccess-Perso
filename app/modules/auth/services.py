@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Request, Response
@@ -5,6 +6,7 @@ from fastapi import Request, Response
 from app.core.config import Settings
 from app.core.exceptions import (
     CreatorAlreadyExistsError,
+    CreatorNotFoundError,
     InactiveCreatorError,
     InvalidOTPError,
     OTPAttemptLimitExceededError,
@@ -24,6 +26,7 @@ from app.modules.auth.schemas import (
     RegisterRequest,
     RegisterResponse,
     RequestOTPRequest,
+    UpdatePhoneRequest,
     RequestOTPResponse,
     VerifyOTPRequest,
     VerifyOTPResponse,
@@ -69,10 +72,14 @@ class AuthService:
         if await self._creator_repo.exists_username(request.username):
             raise CreatorAlreadyExistsError("A creator with this username already exists.")
 
+        if request.phone and await self._creator_repo.exists_phone(request.phone):
+            raise CreatorAlreadyExistsError("A creator with this phone number already exists.")
+
         creator = await self._creator_repo.create(
             name=request.name,
             username=request.username,
             email=request.email,
+            phone=request.phone,
         )
 
         logger.info("Creator registered: %s (id=%s)", creator.username, creator.id)
@@ -80,6 +87,34 @@ class AuthService:
         return RegisterResponse(
             creator=CreatorResponse.model_validate(creator),
         )
+
+    async def get_me(self, creator_id: uuid.UUID) -> CreatorResponse:
+        """Return the creator's own profile."""
+        creator = await self._creator_repo.get_by_id(creator_id)
+        if creator is None:
+            raise CreatorNotFoundError()
+        return CreatorResponse.model_validate(creator)
+
+    # ------------------------------------------------------------------
+    # PHONE
+    # ------------------------------------------------------------------
+
+    async def update_phone(
+        self,
+        creator_id: uuid.UUID,
+        request: UpdatePhoneRequest,
+    ) -> CreatorResponse:
+        """Set the creator's phone number (needed to connect Telegram)."""
+        creator = await self._creator_repo.get_by_id(creator_id)
+        if creator is None:
+            raise CreatorNotFoundError()
+
+        if creator.phone != request.phone and await self._creator_repo.exists_phone(request.phone):
+            raise CreatorAlreadyExistsError("A creator with this phone number already exists.")
+
+        await self._creator_repo.update_phone(creator_id, request.phone)
+        creator.phone = request.phone
+        return CreatorResponse.model_validate(creator)
 
     # ------------------------------------------------------------------
     # REQUEST OTP
@@ -100,6 +135,15 @@ class AuthService:
 
         if not creator.is_active:
             # Silent — don't reveal inactive status
+            return RequestOTPResponse()
+
+        # Cap how many codes one account can be sent per window. Silent, like above,
+        # so the response never reveals that the account exists.
+        window_start = datetime.now(timezone.utc) - timedelta(
+            minutes=self._settings.OTP_REQUEST_WINDOW_MINUTES,
+        )
+        if await self._otp_repo.count_since(creator.id, window_start) >= self._settings.OTP_REQUEST_LIMIT:
+            logger.warning("OTP request limit reached for creator %s", creator.id)
             return RequestOTPResponse()
 
         # Invalidate any previous active OTP
@@ -160,16 +204,20 @@ class AuthService:
             raise InvalidOTPError()
 
         # Check expiry
-        if active_otp.expires_at < datetime.now(timezone.utc):
+        # SQLite hands back naive datetimes; Postgres returns them with a zone.
+        expires_at = active_otp.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < datetime.now(timezone.utc):
             raise OTPExpiredError()
 
         # Check attempts
         if active_otp.attempts >= self._settings.OTP_MAX_ATTEMPTS:
             raise OTPAttemptLimitExceededError()
 
-        # Verify hash
         if not self._security.verify_hash(request.otp_code, active_otp.otp_hash):
             await self._otp_repo.increment_attempts(active_otp.id)
+            await self._otp_repo._session.commit()
             raise InvalidOTPError()
 
         # Mark OTP as used

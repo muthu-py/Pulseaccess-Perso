@@ -1,0 +1,92 @@
+"use client";
+
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { apiRequest } from "@/lib/api/client";
+import type { Community, CommunityList, Creator, GroupConnection, Plan, TelegramConnection } from "@/lib/api/types";
+
+export const creatorKeys = {
+  telegram: ["creator", "telegram"] as const,
+  communities: ["communities"] as const,
+};
+
+export const PAGE_SIZE = 10;
+
+/** Whether the creator's Telegram account is linked. Poll while waiting for the link. */
+export function useCreatorTelegram(opts: { poll?: boolean } = {}) {
+  return useQuery({
+    queryKey: creatorKeys.telegram,
+    queryFn: () => apiRequest<TelegramConnection>("/telegram/connect/creator"),
+    refetchInterval: (query) => (opts.poll && !query.state.data?.connected ? 3000 : false),
+  });
+}
+
+/** Total communities across active and inactive, to know if onboarding is finished. */
+export function useCommunityCount() {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "count"],
+    queryFn: async () => {
+      const [active, inactive] = await Promise.all([
+        apiRequest<CommunityList>("/communities/active?page=1&page_size=1"),
+        apiRequest<CommunityList>("/communities/inactive?page=1&page_size=1"),
+      ]);
+      return active.total + inactive.total;
+    },
+  });
+}
+
+export function useCommunities(tab: "active" | "inactive", page: number) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "list", tab, page],
+    queryFn: () => apiRequest<CommunityList>(`/communities/${tab}?page=${page}&page_size=${PAGE_SIZE}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useCommunity(id: string) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "detail", id],
+    queryFn: () => apiRequest<Community>(`/communities/${id}`),
+  });
+}
+
+/** Group connection status. Polls until CONNECTED, because the backend learns about the bot from a Telegram webhook. */
+export function useGroupConnection(communityId: string) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "connection", communityId],
+    queryFn: () => apiRequest<GroupConnection>(`/telegram/communities/${communityId}/status`),
+    refetchInterval: (query) => (query.state.data?.status === "CONNECTED" ? false : 4000),
+  });
+}
+
+export function usePlans(communityId: string) {
+  return useQuery({
+    queryKey: [...creatorKeys.communities, "plans", communityId],
+    queryFn: () => apiRequest<Plan[]>(`/communities/${communityId}/plans`),
+  });
+}
+
+/** Creator profile from GET /auth/me. Used on the Settings page. */
+export function useCreatorMe() {
+  return useQuery({
+    queryKey: ["creator", "me"],
+    queryFn: () => apiRequest<Creator>("/auth/me"),
+  });
+}
+
+/** Disconnects the Telegram group from a community (DELETE /telegram/communities/{id}). */
+export function useDisconnectGroup(communityId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/telegram/communities/${communityId}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [...creatorKeys.communities, "connection", communityId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [...creatorKeys.communities, "detail", communityId],
+      });
+    },
+  });
+}

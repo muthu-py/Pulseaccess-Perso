@@ -26,6 +26,10 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("aiosmtplib").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    # httpx logs every request at INFO, including the Telegram URL, which
+    # contains the bot token. Only show its warnings and errors.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:

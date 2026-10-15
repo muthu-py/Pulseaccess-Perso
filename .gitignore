@@ -75,3 +75,11 @@ dmypy.json
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# User test folder
+muthu-db-connection-testandexploring/
+telegram-integration-pack/
+
+# The web app's source folder is named lib/ and must not be ignored
+!web/src/lib/
+!web/src/lib/**

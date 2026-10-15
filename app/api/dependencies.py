@@ -1,4 +1,8 @@
-from fastapi import Depends
+import uuid
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -17,9 +21,8 @@ from app.modules.auth.services import AuthService
 
 # Existing module services — preserved
 from app.modules.community.services import CommunityService
-from app.modules.plan.services import PlanService
 from app.modules.subscription.services import SubscriptionService
-from app.infrastructure.telegram.telegram_interface import TelegramService
+from app.infrastructure.telegram.telegram_interface import TelegramClient
 from app.infrastructure.telegram.telegram_stub import TelegramStub
 from app.infrastructure.razorpay.razorpay_interface import RazorpayService
 from app.infrastructure.razorpay.razorpay_stub import RazorpayStub
@@ -120,22 +123,110 @@ def get_auth_service(
 
 
 # ======================================================================
+# JWT Auth Guards — get_current_creator / get_current_member
+# ======================================================================
+
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+ROLE_CREATOR = "creator"
+ROLE_MEMBER = "member"
+
+
+def _authenticate(
+    credentials: HTTPAuthorizationCredentials | None,
+    jwt_service: JWTService,
+) -> tuple[uuid.UUID, str]:
+    """Validate a Bearer access token and return (subject_id, role).
+
+    - Only access tokens are accepted (Doc 10 §4).
+    - Refresh tokens are explicitly rejected.
+    - Missing or invalid tokens → 401 Unauthorized.
+    - Tokens issued before roles existed carry no role and count as creator.
+    """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        payload = jwt_service.validate_token(credentials.credentials)
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Reject refresh tokens used for API access (Doc 10 §4)
+    if payload.get("type") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh tokens may not be used for API authorization.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    subject = payload.get("sub")
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token subject missing.",
+        )
+
+    try:
+        return uuid.UUID(subject), payload.get("role", ROLE_CREATOR)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token subject format.",
+        )
+
+
+def get_current_creator(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    jwt_service: JWTService = Depends(get_jwt_service),
+) -> uuid.UUID:
+    """Validate Bearer JWT and return the authenticated creator_id."""
+    subject_id, role = _authenticate(credentials, jwt_service)
+    if role != ROLE_CREATOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a creator login.",
+        )
+    return subject_id
+
+
+def get_current_member(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    jwt_service: JWTService = Depends(get_jwt_service),
+) -> uuid.UUID:
+    """Validate Bearer JWT and return the authenticated member_id."""
+    subject_id, role = _authenticate(credentials, jwt_service)
+    if role != ROLE_MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a member login.",
+        )
+    return subject_id
+
+
+# ======================================================================
 # Other Module Services (unchanged stubs)
 # ======================================================================
 
-def get_community_service() -> CommunityService:
-    return CommunityService()
+def get_community_service(
+    session: AsyncSession = Depends(get_db),
+) -> CommunityService:
+    from app.modules.community.repositories import CommunityRepository
 
-
-def get_plan_service() -> PlanService:
-    return PlanService()
+    return CommunityService(repository=CommunityRepository(session=session))
 
 
 def get_subscription_service() -> SubscriptionService:
     return SubscriptionService()
 
 
-def get_telegram_service() -> TelegramService:
+def get_telegram_service() -> TelegramClient:
     return TelegramStub()
 
 

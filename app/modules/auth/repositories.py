@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import Creator, LoginOTP, RefreshToken
@@ -22,12 +22,14 @@ class CreatorRepository:
         name: str,
         username: str,
         email: str,
+        phone: str | None = None,
     ) -> Creator:
         """Insert a new creator record."""
         creator = Creator(
             name=name,
             username=username,
             email=email.lower(),
+            phone=phone,
         )
         self._session.add(creator)
         await self._session.flush()
@@ -64,6 +66,17 @@ class CreatorRepository:
         stmt = select(Creator.id).where(Creator.email == email.lower())
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none() is not None
+
+    async def exists_phone(self, phone: str) -> bool:
+        """Check if a creator with this phone exists."""
+        stmt = select(Creator.id).where(Creator.phone == phone)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def update_phone(self, creator_id: uuid.UUID, phone: str) -> None:
+        """Set a creator's phone number."""
+        stmt = update(Creator).where(Creator.id == creator_id).values(phone=phone)
+        await self._session.execute(stmt)
 
     async def exists_username(self, username: str) -> bool:
         """Check if a creator with this username exists."""
@@ -120,6 +133,15 @@ class OTPRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def count_since(self, creator_id: uuid.UUID, since: datetime) -> int:
+        """Count OTPs issued to a creator since `since` (for request rate limiting)."""
+        stmt = select(func.count(LoginOTP.id)).where(
+            LoginOTP.creator_id == creator_id,
+            LoginOTP.created_at >= since,
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one()
 
     async def invalidate_active(
         self,

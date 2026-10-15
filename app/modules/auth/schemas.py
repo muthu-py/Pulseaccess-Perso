@@ -2,7 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.core.phone import is_valid_phone, normalize_phone
 
 T = TypeVar("T")
 
@@ -36,6 +38,7 @@ class CreatorResponse(BaseModel):
     name: str
     username: str
     email: str
+    phone: str | None = None
     is_active: bool
     created_at: datetime
 
@@ -49,6 +52,28 @@ class RegisterRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     username: str = Field(..., min_length=3, max_length=100, pattern=r"^[a-zA-Z0-9_]+$")
     email: EmailStr
+    phone: str | None = Field(None, description="With country code, e.g. +919876543210")
+
+    @field_validator("phone")
+    @classmethod
+    def _check_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not is_valid_phone(value):
+            raise ValueError("Phone must include the country code, e.g. +919876543210")
+        return normalize_phone(value)
+
+
+class UpdatePhoneRequest(BaseModel):
+    """Payload for setting or changing the creator's phone number."""
+    phone: str = Field(..., description="With country code, e.g. +919876543210")
+
+    @field_validator("phone")
+    @classmethod
+    def _check_phone(cls, value: str) -> str:
+        if not is_valid_phone(value):
+            raise ValueError("Phone must include the country code, e.g. +919876543210")
+        return normalize_phone(value)
 
 
 class RegisterResponse(BaseModel):
